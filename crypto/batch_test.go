@@ -9,20 +9,19 @@ import (
 	"testing"
 )
 
-func TestValidBatchProof(t *testing.T) {
+func generateValidBatchProof(curve elliptic.Curve) (*BatchProof, error) {
 	// All public keys are going to be generators, so GenerateKey is a handy
 	// test function. However, TESTING ONLY. Maintaining the discrete log
 	// relationship breaks the token scheme.
-	curve := elliptic.P256()
 	x, _, _, err := elliptic.GenerateKey(curve, rand.Reader)
 	if err != nil {
-		t.Fatal(err)
+		return nil, err
 	}
 
 	_, Gx, Gy, err := elliptic.GenerateKey(curve, rand.Reader)
 	G := &Point{Curve: curve, X: Gx, Y: Gy}
 	if err != nil {
-		t.Fatal(err)
+		return nil, err
 	}
 	Hx, Hy := curve.ScalarMult(Gx, Gy, x)
 	H := &Point{Curve: curve, X: Hx, Y: Hy}
@@ -33,13 +32,18 @@ func TestValidBatchProof(t *testing.T) {
 		_, Mx, My, err := elliptic.GenerateKey(curve, rand.Reader)
 		M[i] = &Point{Curve: curve, X: Mx, Y: My}
 		if err != nil {
-			t.Fatal(err)
+			return nil, err
 		}
 		Zx, Zy := curve.ScalarMult(Mx, My, x)
 		Z[i] = &Point{Curve: curve, X: Zx, Y: Zy}
 	}
 
-	proof, err := NewBatchProof(crypto.SHA256, G, H, M, Z, new(big.Int).SetBytes(x))
+	return NewBatchProof(crypto.SHA256, G, H, M, Z, new(big.Int).SetBytes(x))
+}
+
+func TestValidBatchProof(t *testing.T) {
+	curve := elliptic.P256()
+	proof, err := generateValidBatchProof(curve)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,5 +94,28 @@ func TestInvalidBatchProof(t *testing.T) {
 	}
 	if proof.Verify() {
 		t.Fatal("verified an invalid batch proof")
+	}
+}
+
+// Test that marshaling a proof does not compromise verifiability
+func TestMarshalBatchProof(t *testing.T) {
+	curve := elliptic.P256()
+	bp, err := generateValidBatchProof(curve)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bp.Verify() {
+		t.Fatal("proof was invalid")
+	}
+
+	respBytes, err := bp.MarshalForResp()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	bpUnmarshal := &BatchProof{}
+	bpUnmarshal.Unmarshal(curve, respBytes)
+	if !bpUnmarshal.Verify() {
+		t.Fatal("Failed to verify unmarshaled batch proof")
 	}
 }

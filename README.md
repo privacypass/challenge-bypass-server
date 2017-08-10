@@ -4,17 +4,33 @@ This is the server implementing the second revision of the Cloudflare blinded to
 
 The protocol is based on a variant of an OPRF [password management scheme](https://eprint.iacr.org/2016/144) by Jarecki, Kiayias, Krawczyk and Xu. When adapted to our needs, this scheme allows us to achieve the same goals using faster primitives, less bandwidth, and simpler secret-key operational logistics compared to the earlier RSA-based protocol.
 
+## Contributors
+
+- [George Tankersley](https://github.com/gtank) (george.tankersley@gmail.com)
+- [Alex Davidson](https://github.com/alxdavids) (alex.davidson.92@gmail.com) 
+- [Nick Sullivan](https://github.com/grittygrease) (nick@cloudflare.com)
+- [Filippo Valsorda](https://github.com/filosottile) (hello@filippo.io)
+
+## Acknowledgements
+
+We'd like to thank Dan Boneh for suggesting OPRFs in the first place; Ian Goldberg for his extensive advice and the batch proof; and Brian Warner, Zaki Manian, Tony Arcieri, Isis Lovecruft, Henry de Valence, Trevor Perrin, and several anonymous others for their valuable help, input, and review.
+
 ## Quickstart
 
 To run the server:
 
-`go run server/main.go --key testdata/p256-key.pem`
+`go run server/main.go --key testdata/p256-key.pem --comm testdata/test-p256-commitment`
 
 To demo token issuance:
 
 `cat testdata/bl_sig_req | nc localhost 2416`
 
-For a full client implementation, see the [browser extension](https://github.com/cloudflare/challenge-bypass-extension).
+For a full client implementation, and further details on required message formatting and technical considerations, see the [browser extension](https://github.com/cloudflare/challenge-bypass-extension).
+
+## Current functionality
+
+- Signs blinded tokens and generates valid batch DLEQ proof
+- Verifies redemption tokens
 
 ### Definitions
 
@@ -22,25 +38,103 @@ A **message authentication code (MAC)** on a message is a keyed authentication t
 
 A **pseudorandom function** is a function whose output cannot be efficiently distinguished from random output. This is a general class of functions; concrete examples include hashes and encryption algorithms.
 
-An **oblivious pseudorandom function (OPRF)** is a two-party protocol between sender *S* and receiver *R* for securely computing a pseudorandom function *f_k(·)* on key *k* contributed by *S* and input *x* contributed by *R*, in such a way that receiver *R* learns only the value *f_k(x)* while sender *S* learns nothing from the interaction.
+An **oblivious pseudorandom function (OPRF)** is a two-party protocol between sender *S* and receiver *R* for securely computing a pseudorandom function *f_x(·)* on key *x* contributed by *S* and input *t* contributed by *R*, in such a way that receiver *R* learns only the value *f_x(t)* while sender *S* learns nothing from the interaction.
 
-In this protocol, the Cloudflare edge is the "sender" holding k and the inputs x are the tokens. So the clients don't learn our key and we don't learn the token values.
+In this protocol, the Cloudflare edge is the "sender" holding x and the inputs t are the tokens. So the clients don't learn our key and we don't learn the token values.
 
 ### Protocol sketch
 
-The core difference is that where we previously relied on asymmetric cryptography for signatures, we can instead construct a symmetric exchange in which a secret key known only to the edge is used to create per-token MAC keys for each redemption request in a way that prevents the server from learning the token values and the client from learning the secret key.
+The core difference is that where we previously relied on asymmetric cryptography for signatures, we can instead construct a symmetric exchange in which a secret key known only to the edge is used to create per-token MAC keys for each redemption request in a way that prevents the server from learning the token values and the client from learning the secret key. A full technical overview of this protocol can be read [here](https://github.com/cloudflare/challenge-bypass-extension).
 
-Given a group setting and two hashes H_1, H_2, we build a commitment to a random token per request using a secret key k held by the edge servers. H_1 and H_2 are hash functions onto, respectively, the group and {0, 1}^λ where λ is a security parameter.
+Given a group setting and three hashes H\_1, H\_2, H\_3 we build a commitment to a random token per request using a secret key x held by the edge servers. H\_1 and H\_2 are hash functions onto, respectively, the group and {0, 1}^λ where λ is a security parameter. The server also publishes publically a generator g along with a commitment (or 'public key') y = g^x, this is used for generating discrete-log equivalence proofs (DLEQs). We provide a brief overview of the how DLEQs are generated and verified [below](#nizk-proofs-of-discrete-log-equality).
 
-1. Client generates random token `x` and a blinding factor `r`
-2. Client calculates `a = H_1(x)^r` and sends `a` to the edge along with a CAPTCHA solution
-3. Edge validates the solution and computes `b = a^k = H_1(x)^(rk)`, returns `b` to client
-4. Client unblinds b to retrieve `n = b^(1/r) = H_1(x)^k`. Now both the server and the client can calculate `H_2(x, n)` as a shared key for the MAC.
-5. When the client wants to redeem a token it presents `(x, MAC(request-binding-data))` where `request-binding-data` is made of information observable by the edge that is unique(ish) to that particular request.
-6. The server uses `x` as a double-spend index and recalculates `n` using its secret key. Then it can validate the MAC using the shared key.
-7. We know that a matching commitment value is valid because generating it requires access to `k`.
+1. Client generates random token `x` and a blinding factor `r`.
+2. Client calculates `p = H_1(t)^r` and sends `p` to the edge along with a CAPTCHA solution.
+3. Edge validates the solution and computes `q = p^x = H_1(t)^(rx)` and a DLEQ proof `π` dependent on the output of `H_3` over `g,y,p,q` and other group elements -- see below for more details.
+4. The server returns `(q,π)` to the client.
+5. Client unblinds b to retrieve `n = q^(1/r) = H_1(t)^x`. Now both the server and the client can calculate `H_2(t, n)` as a shared key for the MAC.
+6. When the client wants to redeem a token it presents `(t, MAC(request-binding-data))` where `request-binding-data` is made of information observable by the edge that is unique(ish) to that particular request.
+7. The server uses `t` as a double-spend index and recalculates `n` using `x`. Then it can validate the MAC using the shared key.
+8. We know that a matching commitment value is valid because generating it requires access to `x`.
 
-We prevent the edge from tracking users by tagging with unique keys using batch discrete-logarithm equality proofs (which are implemented but not yet deployed).
+#### NIZK proofs of discrete-log equality
+
+In step (3.) above, we call for a zero-knowledge proof of the equality of a discrete logarithm (our edge key) with regard to the returned token `q` that the client receives. This allows the client to verify that the same key `x` is being used to 'sign' all tokens that are sent to the edge.
+
+The protocol naturally provides q = p^x in the edge response. To ensure that the edge has not used unique x value to tag users, we require them to publish a public key, y = g^x, as mentioned above. If p, q are orthogonal we can use a Chaum-Pedersen proof [CP93] to prove in zero knowledge that log\_p(y) == log\_p(q). We note this as DLEQ(q/p == y/g).
+
+The proof follows the standard non-interactive Schnorr pattern. For a group of prime order Q with orthogonal generators p, g, public key t, and point q:
+
+1. Prover chooses a random nonce
+
+        k <--$-- Z/QZ
+
+2. Prover commits to the nonce with respect to both generators
+
+        a = g^k, b = p^k
+
+3. Prover constructs the challenge
+
+        c = H_3(g,y,p,q,a,b)
+
+4. Prover calculates response
+
+        s = k - cx (mod q)
+
+5. Prover sends (c, s) to the verifier
+
+6. Verifier recalculates commitments
+
+        a' = g^s + y^c
+        b' = p^s + q^c
+
+7. Verifier hashes
+
+        c' = H_3(g,y,p,q,a',b')
+
+   and checks that c == c'.
+
+If all users share a consistent view of the tuple (y, g) for each key epoch, they can all prove that the tokens they have been issued share the same anonymity set with respect to k. One way to ensure this consistent view is to pin a key in each copy of the client and use software update mechanisms for rotation. A more flexible way is to pin a reference that allows each client to fetch the latest version of the key from a trusted location. We currently use the former method but plan to migrate to the latter in the near future.
+
+
+#### Batch proofs
+
+In practice, the issuance protocol operates over sets of tokens rather than just one. A system parameter, m, determines how many tokens a user is allowed to request per valid CAPTCHA solution. Consequently, users generate (t\_1, t\_2, ... , t\_m) and (b\_1, b\_2, ... , b\_m); send (p\_1, p\_2, ... , p\_m) to the edge; and receive (q\_1, q\_2 ... , q\_m) in response.
+
+Generating an independent proof of equality for each point implies excess overhead in both computation and bandwidth consumption. Therefore, we employ a batch proof to show consistent key usage for an entire set of tokens at once.  The proof is a parallelized Schnorr protocol for the common-exponent case taken from [Hen14] and adapted for non-interactivity:
+
+Given (g, y, q); (p\_1,...,p\_m), (q\_1, ... ,q\_m); q\_i = k(p\_i) for i = 1...m
+
+1. Prover calculates a seed using a Fiat-Shamir transform:
+
+        z = H_3(g, y, p_1, ... , p_m, q_1, ... , q_m)
+
+2. Prover initializes PRNG(z) and samples from it to non-interactively generate
+
+        c_1, ... , c_m <--$-- Z/qZ.
+
+3. Prover generates composite group elements M and Z
+
+        M = (c_1*p_1) + (c_2*p_2) + ... + (c_m*p_m)
+        Z = (c_1*q_1) + (c_2*q_2) + ... + (c_m*q_m)
+
+4. Prover sends proof
+
+        (c, s) <-- DLEQ(M/Z == y/g)
+
+5. Verifier recalculates the PRNG seed from protocol state, generates the composite elements, and checks that c' == c as in the single-element proof above.
+
+We can see why this works in a reduced case.
+
+For (p\_1, p\_2), (q\_1, q\_2), and (c\_1, c\_2):
+
+    q_1 = x(p_1)
+    q_2 = x(p_2)
+    (c_1*q_1) = c_1(x*p_1) = x(c_1*p_1)
+    (c_2*q_2) = c_2(x*p_2) = x(c_2*p_2)
+    (c_1*q_1) + (c_2*q_2) = x[(c_1*p_1) + (c_2*p_2)]
+
+So the composite points will have the same discrete log relation x as the underlying individual points.
 
 ### Benefits vs blind-RSA protocol
 
@@ -49,3 +143,11 @@ We prevent the edge from tracking users by tagging with unique keys using batch 
 - No need for public-key encryption at all, since the derived shared key used to calculate each MAC is never transmitted and cannot be calculated without knowledge of the edge key or the client's blinding factor.
 - The only secret to be managed is a 32-byte scalar.
 - Easier key rotation. Instead of managing RSA certificates with pinning or transparency, we can publish/pin the commitment component of a DLEQ proof to allow clients to positively verify they're in the same anonymity set with regard to k as everyone else. Alternatively or additionally, if we publish historical k values then auditors who save their b results can check our honesty.
+
+## Blog post
+
+See the Cloudflare blog post (to be written)
+
+## IETF draft
+
+See the spec [here](https://github.com/cloudflare/challenge-bypass-specification).

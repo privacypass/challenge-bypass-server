@@ -16,19 +16,24 @@ package crypto
 
 import (
 	"crypto"
+	"crypto/elliptic"
+	b64 "encoding/base64"
+	"encoding/json"
 	"errors"
-	"math/big"
-
 	"golang.org/x/crypto/sha3"
+	"math/big"
+	"strings"
 )
 
 var (
 	ErrUnequalPointCounts = errors.New("batch proof had unequal numbers of points")
+
+	BATCH_PROOF_RESP_STR = "batch-proof="
 )
 
+// We used to send G,H with BP but may as well just use them in P
 type BatchProof struct {
 	P    *Proof
-	G, H *Point
 	M, Z []*Point
 	C    [][]byte
 }
@@ -90,14 +95,13 @@ func NewBatchProof(hash crypto.Hash, g, h *Point, m []*Point, z []*Point, x *big
 	}
 	return &BatchProof{
 		P: proof,
-		G: g, H: h,
 		M: m, Z: z,
 		C: C,
 	}, nil
 }
 
 func (b *BatchProof) IsComplete() bool {
-	hasPublicKey := b.G != nil && b.H != nil
+	hasPublicKey := b.P.G != nil && b.P.H != nil
 	hasPointSets := b.M != nil && b.Z != nil && len(b.M) == len(b.Z)
 	return hasPublicKey && hasPointSets && b.C != nil
 }
@@ -106,11 +110,12 @@ func (b *BatchProof) IsSane() bool {
 	if len(b.M) != len(b.Z) {
 		return false
 	}
-	if b.G.Curve != b.H.Curve {
+	if b.P.G.Curve != b.P.H.Curve {
 		return false
 	}
 	for i := 0; i < len(b.M); i++ {
-		if b.G.Curve != b.M[i].Curve || b.G.Curve != b.Z[i].Curve {
+
+		if b.P.G.Curve != b.M[i].Curve || b.P.G.Curve != b.Z[i].Curve {
 			return false
 		}
 		if !b.M[i].IsOnCurve() || !b.Z[i].IsOnCurve() {
@@ -125,4 +130,97 @@ func (b *BatchProof) Verify() bool {
 		return false
 	}
 	return b.P.Verify()
+}
+
+// Marshal a proof to be sent to a client
+func (b *BatchProof) MarshalForResp() ([]byte, error) {
+	prB64, err := b.P.Marshal()
+	if err != nil {
+		return nil, err
+	}
+
+	bpEnc := map[string]interface{}{"P": prB64, "M": b.M, "Z": b.Z, "C": b.C}
+
+	bpJson, err := json.Marshal(bpEnc)
+	if err != nil {
+		return nil, err
+	}
+
+	resp := []byte(BATCH_PROOF_RESP_STR + string(bpJson))
+
+	return resp, nil
+}
+
+// Takes the batch proof marshaled above and unmarshals it
+// Can be used with either the BATCH_PROOF_RESP_STR attached or not
+func (b *BatchProof) Unmarshal(curve elliptic.Curve, data []byte) error {
+	dataStr := string(data)
+	// If the resp string is still attached then remove it
+	if strings.Contains(dataStr, BATCH_PROOF_RESP_STR) {
+		dataStr = strings.Split(dataStr, BATCH_PROOF_RESP_STR)[1]
+	}
+
+	// Unmarshal JSON encoding
+	// TODO: do it better than interfaces
+	bpJsonBytes := []byte(dataStr)
+	var bpDat map[string]interface{}
+	json.Unmarshal(bpJsonBytes, &bpDat)
+
+	// Have to decode base64 proof separately
+	prBytes, err := b64.StdEncoding.DecodeString(bpDat["P"].(string))
+	if err != nil {
+		return err
+	}
+	ep := &Base64Proof{}
+	json.Unmarshal(prBytes, ep)
+	proof, err := ep.DecodeProof(curve)
+	if err != nil {
+		return err
+	}
+	proof.hash = crypto.SHA256
+
+	// Decode rest of batch proof contents
+	mStr := bpDat["M"].([]interface{})
+	M, err := decodeToPointArray(curve, mStr)
+	if err != nil {
+		return err
+	}
+
+	zStr := bpDat["Z"].([]interface{})
+	Z, err := decodeToPointArray(curve, zStr)
+	if err != nil {
+		return err
+	}
+
+	cStr := bpDat["C"].([]interface{})
+	C := make([][]byte, len(cStr))
+	for i, v := range cStr {
+		vBytes, err := b64.StdEncoding.DecodeString(v.(string))
+		if err != nil {
+			return err
+		}
+		C[i] = vBytes
+	}
+
+	b.P, b.M, b.Z, b.C = proof, M, Z, C
+	return nil
+}
+
+// Takes a base64 encoded array of points and returns an array of points
+func decodeToPointArray(curve elliptic.Curve, b64Arr []interface{}) ([]*Point, error) {
+	pArr := make([]*Point, len(b64Arr))
+	for i, v := range b64Arr {
+		vBytes, err := b64.StdEncoding.DecodeString(v.(string))
+		if err != nil {
+			return nil, err
+		}
+
+		pArr[i] = &Point{}
+		err = pArr[i].Unmarshal(curve, vBytes)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return pArr, nil
 }

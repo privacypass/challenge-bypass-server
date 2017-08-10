@@ -14,6 +14,8 @@ import (
 	"crypto/elliptic"
 	"crypto/hmac"
 	crand "crypto/rand"
+	b64 "encoding/base64"
+	"encoding/json"
 	"errors"
 	"math/big"
 )
@@ -35,6 +37,13 @@ type Proof struct {
 	C    *big.Int // hash of intermediate proof values to streamline equality checks
 
 	hash crypto.Hash
+}
+
+type Base64Proof struct {
+	G, M string
+	H, Z string
+	R    string
+	C    string
 }
 
 func (p *Proof) IsComplete() bool {
@@ -136,6 +145,86 @@ func (pr *Proof) Verify() bool {
 	H.Write(elliptic.Marshal(curve, Ax, Ay))
 	H.Write(elliptic.Marshal(curve, Bx, By))
 	c := H.Sum(nil)
-
 	return hmac.Equal(pr.C.Bytes(), c)
+}
+
+// Base64 encode the fields of the DLEQ proof for sending back to client
+func (pr *Proof) EncodeProof() *Base64Proof {
+	ep := &Base64Proof{}
+	ep.G = b64.StdEncoding.EncodeToString(pr.G.Marshal())
+	ep.H = b64.StdEncoding.EncodeToString(pr.H.Marshal())
+	ep.M = b64.StdEncoding.EncodeToString(pr.M.Marshal())
+	ep.Z = b64.StdEncoding.EncodeToString(pr.Z.Marshal())
+	ep.R = b64.StdEncoding.EncodeToString(pr.R.Bytes())
+	ep.C = b64.StdEncoding.EncodeToString(pr.C.Bytes())
+
+	return ep
+}
+
+// Decode base64 proofs
+func (ep *Base64Proof) DecodeProof(curve elliptic.Curve) (*Proof, error) {
+	pr := &Proof{}
+	var err error
+
+	// Decoded each of the points from b64 to *Point format
+	pr.G, err = decodePoint(curve, ep.G)
+	if err != nil {
+		return nil, err
+	}
+
+	pr.M, err = decodePoint(curve, ep.M)
+	if err != nil {
+		return nil, err
+	}
+
+	pr.H, err = decodePoint(curve, ep.H)
+	if err != nil {
+		return nil, err
+	}
+
+	pr.Z, err = decodePoint(curve, ep.Z)
+	if err != nil {
+		return nil, err
+	}
+
+	// decode big.Int fields
+	RBytes, err := b64.StdEncoding.DecodeString(ep.R)
+	if err != nil {
+		return nil, err
+	}
+	pr.R = new(big.Int).SetBytes(RBytes)
+
+	CBytes, err := b64.StdEncoding.DecodeString(ep.C)
+	if err != nil {
+		return nil, err
+	}
+	pr.C = new(big.Int).SetBytes(CBytes)
+
+	return pr, nil
+}
+
+// Decodes a point from b64 representation
+func decodePoint(curve elliptic.Curve, b64Point string) (*Point, error) {
+	p := &Point{}
+	pBytes, err := b64.StdEncoding.DecodeString(b64Point)
+	if err != nil {
+		return nil, err
+	}
+	err = p.Unmarshal(curve, pBytes)
+	if err != nil {
+		return nil, err
+	}
+
+	return p, nil
+}
+
+// Marshal proof as part of BatchProof objects for responses
+func (pr *Proof) Marshal() (string, error) {
+	ep := pr.EncodeProof()
+	epJsonBytes, err := json.Marshal(ep)
+	if err != nil {
+		return "", err
+	}
+	prB64 := b64.StdEncoding.EncodeToString(epJsonBytes)
+	return prB64, nil
 }
