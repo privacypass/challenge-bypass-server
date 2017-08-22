@@ -1,6 +1,7 @@
 package crypto
 
 import (
+	"bytes"
 	"crypto"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -16,6 +17,7 @@ var (
 	ErrNoPointFound     = errors.New("hash_to_curve failed to find a point")
 	ErrPointOffCurve    = errors.New("point is not on curve")
 	ErrUnspecifiedCurve = errors.New("must specify an elliptic curve")
+	ErrCommSanityCheck  = errors.New("commitment does not match key")
 )
 
 type Point struct {
@@ -98,6 +100,7 @@ func (p *Point) Unmarshal(curve elliptic.Curve, data []byte) error {
 				y = nil
 				return ErrInvalidPoint
 			}
+			p.Curve = curve
 			p.X, p.Y = x, y
 			return nil
 		} else {
@@ -106,6 +109,7 @@ func (p *Point) Unmarshal(curve elliptic.Curve, data []byte) error {
 	}
 	if len(data) == (2*byteLen)+1 && data[0] == 0x04 {
 		// Uncompressed point
+		p.Curve = curve
 		p.X, p.Y = elliptic.Unmarshal(curve, data)
 		if p.X == nil {
 			return ErrInvalidPoint
@@ -146,6 +150,22 @@ func BatchMarshalPoints(points []*Point) ([][]byte, error) {
 		data[i] = points[i].Marshal()
 	}
 	return data, nil
+}
+
+// We combine the marshaled points with the DLEQ proof
+// This function splits the points and the DLEQ proof for further unmarshaling
+func GetMarshaledPointsAndDleq(data [][]byte) ([][]byte, []byte) {
+	marshaledPoints := make([][]byte, len(data)-1)
+	var batchProof []byte
+	for i, v := range data {
+		if i < len(data)-1 {
+			marshaledPoints[i] = v
+		} else {
+			batchProof = data[i]
+		}
+	}
+
+	return marshaledPoints, batchProof
 }
 
 func NewPoint(curve elliptic.Curve, x, y *big.Int) (*Point, error) {
@@ -262,4 +282,42 @@ func randScalar(curve elliptic.Curve, rand io.Reader) ([]byte, *big.Int, error) 
 	}
 
 	return buf, new(big.Int).SetBytes(buf), nil
+}
+
+// We want to be able to load commitments in from file as part
+// of enabling DLEQ proof batching. Perform this sanity check to make
+// sure that commitments work properly.
+// Also returns point representations
+func RetrieveCommPoints(GBytes, HBytes, key []byte) (*Point, *Point, error) {
+	G := &Point{Curve: elliptic.P256(), X: nil, Y: nil}
+	err := G.Unmarshal(G.Curve, GBytes)
+	if err != nil {
+		return nil, nil, err
+	}
+	H := &Point{Curve: elliptic.P256(), X: nil, Y: nil}
+	err = H.Unmarshal(H.Curve, HBytes)
+	if err != nil {
+		return nil, nil, err
+	}
+	curve := elliptic.P256()
+	chkHX, chkHY := curve.ScalarMult(G.X, G.Y, key)
+	chkH := &Point{Curve: elliptic.P256(), X: chkHX, Y: chkHY}
+	hash := crypto.SHA256
+	chkHash := hash.New()
+	_, err = chkHash.Write(chkH.Marshal())
+	if err != nil {
+		return nil, nil, err
+	}
+
+	h := hash.New()
+	_, err = h.Write(H.Marshal())
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if !bytes.Equal(h.Sum(nil), chkHash.Sum(nil)) {
+		return nil, nil, ErrCommSanityCheck
+	}
+
+	return G, H, nil
 }

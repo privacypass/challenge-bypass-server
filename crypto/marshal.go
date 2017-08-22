@@ -3,6 +3,8 @@ package crypto
 import (
 	"crypto/elliptic"
 	"crypto/x509"
+	b64 "encoding/base64"
+	"encoding/json"
 	"encoding/pem"
 	"fmt"
 	"io/ioutil"
@@ -39,4 +41,28 @@ func ParseKeyFile(keyFilePath string) (elliptic.Curve, []byte, error) {
 		return nil, nil, err
 	}
 	return privKey.PublicKey.Curve, privKey.D.Bytes(), nil
+}
+
+// Load the commitment to a generator that is currently in use as well.
+func ParseCommitmentFile(genFilePath string) ([]byte, []byte, error) {
+	commBytes, err := ioutil.ReadFile(genFilePath)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var commJson map[string]string
+	if e := json.Unmarshal(commBytes, &commJson); e != nil {
+		return nil, nil, e
+	}
+
+	GBytes, err := b64.StdEncoding.DecodeString(commJson["G"])
+	if err != nil {
+		return nil, nil, err
+	}
+	HBytes, err := b64.StdEncoding.DecodeString(commJson["H"])
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return GBytes, HBytes, nil
 }

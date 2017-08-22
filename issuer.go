@@ -5,10 +5,10 @@ import (
 	"crypto/elliptic"
 	"encoding/base64"
 	"errors"
-	"net"
-
 	"github.com/cloudflare/btd/crypto"
 	"github.com/cloudflare/btd/metrics"
+	"math/big"
+	"net"
 )
 
 var (
@@ -18,14 +18,15 @@ var (
 	ErrTooManyTokens             = errors.New("ISSUE request contained too many tokens")
 	ErrTooFewRedemptionArguments = errors.New("REDEEM request did not contain enough arguments")
 	ErrUnexpectedRequestType     = errors.New("unexpected request type")
+	ErrInvalidBatchProof         = errors.New("New batch proof for signed tokens is invalid")
 
 	// XXX: this is a fairly expensive piece of init
 	SpentTokens = NewDoubleSpendList()
 )
 
 // ApproveTokens applies the issuer's secret key to each token in the request.
-// It returns an array of marshaled approved values.
-func ApproveTokens(req BlindTokenRequest, key []byte) ([][]byte, error) {
+// It returns an array of marshaled approved values along with a batch DLEQ proof.
+func ApproveTokens(req BlindTokenRequest, key []byte, G, H *crypto.Point) ([][]byte, error) {
 	// Unmarshal the incoming blinded points
 	// XXX: hardcoded curve assumption
 	P, err := crypto.BatchUnmarshalPoints(elliptic.P256(), req.Contents)
@@ -39,9 +40,31 @@ func ApproveTokens(req BlindTokenRequest, key []byte) ([][]byte, error) {
 		Q[i] = crypto.SignPoint(P[i], key)
 	}
 
-	// TODO(gtank): generate DLEQ proof
+	// Generate batch DLEQ proof
+	bp, err := crypto.NewBatchProof(stdcrypto.SHA256, G, H, P, Q, new(big.Int).SetBytes(key))
+	if err != nil {
+		return nil, err
+	}
 
-	return crypto.BatchMarshalPoints(Q)
+	// Check that the proof is valid
+	if !bp.Verify() {
+		return nil, ErrInvalidBatchProof
+	}
+
+	// Marshal the proof for response transmission
+	bpData, err := bp.MarshalForResp()
+	if err != nil {
+		return nil, err
+	}
+
+	// Batch marshal the signed curve points
+	pointData, err := crypto.BatchMarshalPoints(Q)
+	if err != nil {
+		return nil, err
+	}
+
+	// Returns an array containing marshaled points and batch DLEQ proof
+	return append(pointData, bpData), nil
 }
 
 // RedeemToken checks a redemption request against the observed request data
@@ -83,9 +106,10 @@ func RedeemToken(req BlindTokenRequest, host, path, key []byte) error {
 // slices representing blinded curve points in the Contents field of a
 // BlindTokenRequest. Approval consists of multiplying each point by a "secret
 // key" that is a valid scalar for the underlying curve. After approval, it
-// encodes the new points and writes them back to the client.
+// encodes the new points and writes them back to the client along with a
+// batch DLEQ proof.
 // Return nil on success, caller closes the connection.
-func HandleIssue(conn *net.TCPConn, req BlindTokenRequest, key []byte, maxTokens int) error {
+func HandleIssue(conn *net.TCPConn, req BlindTokenRequest, key []byte, G, H *crypto.Point, maxTokens int) error {
 	if req.Type != ISSUE {
 		metrics.CounterIssueErrorFormat.Inc()
 		return ErrUnexpectedRequestType
@@ -96,7 +120,8 @@ func HandleIssue(conn *net.TCPConn, req BlindTokenRequest, key []byte, maxTokens
 		return ErrTooManyTokens
 	}
 
-	marshaledTokenList, err := ApproveTokens(req, key)
+	// This also includes the dleq proof now
+	marshaledTokenList, err := ApproveTokens(req, key, G, H)
 	if err != nil {
 		return err
 	}

@@ -19,6 +19,7 @@ import (
 )
 
 var (
+	Version         = "dev"
 	maxBackoffDelay = 1 * time.Second
 	maxRequestSize  = int64(20 * 1024) // ~10kB is expected size for 100*base64([64]byte) + ~framing
 
@@ -26,18 +27,23 @@ var (
 	ErrNoSecretKey         = errors.New("server config does not contain a key")
 	ErrRequestTooLarge     = errors.New("request too large to process")
 	ErrUnrecognizedRequest = errors.New("received unrecognized request type")
+	// Commitments are embedded straight into the extension for now
+	ErrEmptyCommPath = errors.New("no commitment file path specified")
 
 	errLog *log.Logger = log.New(os.Stderr, "[btd] ", log.LstdFlags|log.Lshortfile)
 )
 
 type Server struct {
-	BindAddress string `json:"bind_address,omitempty"`
-	ListenPort  int    `json:"listen_port,omitempty"`
-	MetricsPort int    `json:"metrics_port,omitempty"`
-	MaxTokens   int    `json:"max_tokens,omitempty"`
-	KeyFilePath string `json:"key_file_path"`
+	BindAddress  string `json:"bind_address,omitempty"`
+	ListenPort   int    `json:"listen_port,omitempty"`
+	MetricsPort  int    `json:"metrics_port,omitempty"`
+	MaxTokens    int    `json:"max_tokens,omitempty"`
+	KeyFilePath  string `json:"key_file_path"`
+	CommFilePath string `json:"comm_file_path"`
 
-	key []byte // a big-endian marshaled big.Int representing an elliptic curve scalar
+	key []byte        // a big-endian marshaled big.Int representing an elliptic curve scalar
+	G   *crypto.Point // elliptic curve point representation of generator G
+	H   *crypto.Point // elliptic curve point representation of commitment H to key
 }
 
 var DefaultServer = &Server{
@@ -98,7 +104,7 @@ func (c *Server) handle(conn *net.TCPConn) error {
 	switch request.Type {
 	case btd.ISSUE:
 		metrics.CounterIssueTotal.Inc()
-		err = btd.HandleIssue(conn, request, c.key, c.MaxTokens)
+		err = btd.HandleIssue(conn, request, c.key, c.G, c.H, c.MaxTokens)
 		if err != nil {
 			metrics.CounterIssueError.Inc()
 			return err
@@ -124,12 +130,16 @@ func (c *Server) handle(conn *net.TCPConn) error {
 func (c *Server) loadKeys() error {
 	if c.KeyFilePath == "" {
 		return ErrEmptyKeyPath
+	} else if c.CommFilePath == "" {
+		return ErrEmptyCommPath
 	}
+
 	_, key, err := crypto.ParseKeyFile(c.KeyFilePath)
 	if err != nil {
 		return err
 	}
 	c.key = key
+
 	return nil
 }
 
@@ -148,6 +158,7 @@ func (c *Server) ListenAndServe() error {
 		return err
 	}
 	defer listener.Close()
+	errLog.Printf("blindsigmgmt starting, version: %v", Version)
 	errLog.Printf("listening on %s", addr)
 
 	// Initialize prometheus endpoint
@@ -207,6 +218,7 @@ func main() {
 	flag.StringVar(&configFile, "config", "", "local config file for development (overrides cli options)")
 	flag.StringVar(&srv.BindAddress, "addr", "127.0.0.1", "address to listen on")
 	flag.StringVar(&srv.KeyFilePath, "key", "", "path to the secret key file")
+	flag.StringVar(&srv.CommFilePath, "comm", "", "path to the commitment file")
 	flag.IntVar(&srv.ListenPort, "p", 2416, "port to listen on")
 	flag.IntVar(&srv.MetricsPort, "m", 2417, "metrics port")
 	flag.IntVar(&srv.MaxTokens, "maxtokens", 100, "maximum number of tokens issued per request")
@@ -220,13 +232,26 @@ func main() {
 		}
 	}
 
-	if configFile == "" && srv.KeyFilePath == "" {
+	if configFile == "" && (srv.KeyFilePath == "" || srv.CommFilePath == "") {
 		flag.Usage()
 		return
 	}
 
 	err = srv.loadKeys()
+	if err != nil {
+		errLog.Fatal(err)
+		return
+	}
 
+	// Get bytes for public commitment to private key
+	GBytes, HBytes, err := crypto.ParseCommitmentFile(srv.CommFilePath)
+	if err != nil {
+		errLog.Fatal(err)
+		return
+	}
+
+	// Retrieve the actual elliptic curve points for the commitment
+	srv.G, srv.H, err = crypto.RetrieveCommPoints(GBytes, HBytes, srv.key)
 	if err != nil {
 		errLog.Fatal(err)
 		return

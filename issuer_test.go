@@ -73,6 +73,20 @@ func fakeSigningKey() ([]byte, error) {
 	return k, nil
 }
 
+func fakeCommitments(key []byte) (*crypto.Point, *crypto.Point, error) {
+	curve := elliptic.P256()
+	_, Gx, Gy, err := elliptic.GenerateKey(curve, crand.Reader)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	G := &crypto.Point{Curve: curve, X: Gx, Y: Gy}
+	Hx, Hy := curve.ScalarMult(Gx, Gy, key)
+	H := &crypto.Point{Curve: curve, X: Hx, Y: Hy}
+
+	return G, H, nil
+}
+
 func TestParseWrappedRequest(t *testing.T) {
 	reqBytes, err := fakeWrappedRequest()
 	if err != nil {
@@ -117,7 +131,12 @@ func TestTokenIssuance(t *testing.T) {
 		t.Fatal("couldn't even fake a key")
 	}
 
-	marshaledTokenList, err := ApproveTokens(req, key)
+	G, H, err := fakeCommitments(key)
+	if err != nil {
+		t.Fatal("couldn't even fake the commitments")
+	}
+
+	marshaledTokenList, err := ApproveTokens(req, key, G, H)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,8 +163,15 @@ func TestTokenRedemption(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 2b. Sign the blind points
-	marshaledTokenList, err := ApproveTokens(*request, x)
+
+	// 2b. generate commitment
+	G, H, err := fakeCommitments(x)
+	if err != nil {
+		t.Fatal("couldn't even fake the commitments")
+	}
+
+	// 2c. Sign the blind points
+	marshaledData, err := ApproveTokens(*request, x, G, H)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,15 +183,27 @@ func TestTokenRedemption(t *testing.T) {
 	// XXX: hardcoded curve assumption
 	curve := elliptic.P256()
 	hash := stdcrypto.SHA256
-	xbP, err := crypto.BatchUnmarshalPoints(curve, marshaledTokenList)
+	marshaledPoints, marshaledBP := crypto.GetMarshaledPointsAndDleq(marshaledData)
+	xbP, err := crypto.BatchUnmarshalPoints(curve, marshaledPoints)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 3b. Unblind a point
+
+	// 3b. Unmarshal and verify batch proof
+	batchProof := &crypto.BatchProof{}
+	err = batchProof.Unmarshal(curve, marshaledBP)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !batchProof.Verify() {
+		t.Fatal("Batch proof failed to verify")
+	}
+
+	// 3c. Unblind a point
 	xT := crypto.UnblindPoint(xbP[0], bF[0])
-	// 3c. Derive MAC key
+	// 3d. Derive MAC key
 	sk := crypto.DeriveKey(hash, xT, tokens[0])
-	// 3d. MAC the request binding data
+	// 3e. MAC the request binding data
 	reqData := [][]byte{[]byte("example.com"), []byte("/index.html")}
 	reqBinder := crypto.CreateRequestBinding(hash, sk, reqData)
 

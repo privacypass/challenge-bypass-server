@@ -11,7 +11,6 @@ import (
 )
 
 var (
-	Version   string = "2017.7.0"
 	GoVersion string = runtime.Version()
 )
 
@@ -82,7 +81,6 @@ var (
 )
 
 func RegisterAndListen(listenAddr string, errLog *log.Logger) {
-	BuildInfo.WithLabelValues(Version, GoVersion).Set(1)
 	registry := []prometheus.Collector{
 		CounterConnections, CounterConnErrors, CounterRedeemTotal,
 		CounterRedeemSuccess, CounterRedeemError, CounterRedeemErrorFormat,
@@ -107,7 +105,7 @@ func RegisterAndListen(listenAddr string, errLog *log.Logger) {
 	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
 
 	mux.HandleFunc("/debug/version", func(w http.ResponseWriter, req *http.Request) {
-		fmt.Fprintf(w, "Version: %s, GoVersion: %s", Version, GoVersion)
+		fmt.Fprintf(w, "GoVersion: %s", GoVersion)
 	})
 
 	server := http.Server{
