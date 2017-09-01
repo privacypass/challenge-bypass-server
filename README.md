@@ -1,6 +1,6 @@
-## Blind Token Daemon
+# Blind Token Daemon
 
-This is the server implementing the second revision of the Cloudflare blinded tokens protocol. For a description of the original protocol and motivations, see the [challenge bypass specification](https://github.com/cloudflare/challenge-bypass-specification) or our talk at [Real World Crypto 2017](https://speakerdeck.com/gtank/solving-the-cloudflare-captcha-rwc2017).
+This is a TCP server implementing the second revision of the Cloudflare blinded tokens protocol. For a description of the original protocol and motivations, see the [challenge bypass specification](https://github.com/cloudflare/challenge-bypass-specification) or our talk at [Real World Crypto 2017](https://speakerdeck.com/gtank/solving-the-cloudflare-captcha-rwc2017). 
 
 The protocol is based on a variant of an OPRF [password management scheme](https://eprint.iacr.org/2016/144) by Jarecki, Kiayias, Krawczyk and Xu. When adapted to our needs, this scheme allows us to achieve the same goals using faster primitives, less bandwidth, and simpler secret-key operational logistics compared to the earlier RSA-based protocol.
 
@@ -32,23 +32,128 @@ For a full client implementation, and further details on required message format
 - Signs blinded tokens and generates valid batch DLEQ proof
 - Verifies redemption tokens
 
-### Definitions
+## Definitions
 
 A **message authentication code (MAC)** on a message is a keyed authentication tag that can be only be created and verified by the holder of the key.
 
 A **pseudorandom function** is a function whose output cannot be efficiently distinguished from random output. This is a general class of functions; concrete examples include hashes and encryption algorithms.
 
-An **oblivious pseudorandom function (OPRF)** is a two-party protocol between sender *S* and receiver *R* for securely computing a pseudorandom function *f_x(·)* on key *x* contributed by *S* and input *t* contributed by *R*, in such a way that receiver *R* learns only the value *f_x(t)* while sender *S* learns nothing from the interaction.
+An **oblivious pseudorandom function (OPRF)** is a two-party protocol between sender *S* and receiver *R* for securely computing a pseudorandom function *f_x(·)* on key *x* contributed by *S* and input *t* contributed by *R*, in such a way that receiver *R* learns only the value *f_x(t)* while sender *S* learns nothing from the interaction. The output of an OPRF on some input *t* is known as a **signature** for *t*.
 
 In this protocol, the Cloudflare edge is the "sender" holding x and the inputs t are the tokens. So the clients don't learn our key and we don't learn the token values.
 
-### Protocol sketch
+## Message formats
+
+We provide a brief overview of the message types that are sent and received by this plugin. These messages are sent and received in base64 encoding and JSON structs are used where appropriate. These formats differ slightly from those sent/received by the corresponding [browser extension](https://github.com/cloudflare/challenge-bypass-extension) which uses intermediate HTTP communications with the edge before messages reach here.
+
+In the following `||` will denote concatenation.
+
+### Issuance request
+
+JSON struct used for requesting signatures on blinded tokens.
+
+- `<blind-token>` is a randomly sampled, blinded elliptic curve point (this point is sent in compressed format as defined in Section 2.3.3 of http://www.secg.org/sec1-v2.pdf). The blind is also randomly sampled with respect to the same group.
+
+- `<contents>` is an array of N `<blind-token>` objects.
+
+- `<Issue-JSON-struct>`:
+
+    ```
+    {
+        "type": "Issue",
+        "contents": "<contents>",
+    }
+    ```
+- `<Wrapped-Issue>` is the message that is actually received:
+    
+    ```
+    {
+        "bl_sig_req": "base64(<Issue-JSON-struct>)",
+    }
+    ```
+
+### Issue response
+
+Marshaled array used for sending signed tokens back to a client.
+
+- `<signed-tokens>` is an array of compressed elliptic curve point, as above, that have been 'signed' by the edge. 
+
+- `<proof>` is a base64 encoded JSON struct containing the necessary information for carrying out a DLEQ proof verification. In particular it contains base64 encodings of compressed elliptic curve points G,Y,P,Q along with response values S and C for streamlining the proof verification. See [below](#nizk-proofs-of-discrete-log-equality) for more details.
+
+- `<M>` and `<Z>` are base64 encoded compressed elliptic curve points. `<C>` is a base64 encoded array of bytes used for checking completeness.
+
+- `<batch-proof>` is a JSON struct of the form:<sup>2</sup>
+
+    ```
+    {
+        "proof":"<proof>",
+        "M":"<M>",
+        "Z":"<Z>",
+        "C":"<C>",
+    }
+    ```
+
+<sup>2</sup> Other [VRF implementations](https://datatracker.ietf.org/doc/draft-goldbe-vrf/?include_text=1) use different notation to us. We have tried to coincide as much as possible with these works.
+
+- `<Batch-DLEQ-Resp>`:
+    
+    `"batch-proof=" || <batch-proof>` 
+
+- Issue response:
+    
+    `base64(<signed-tokens> || <Batch-DLEQ-Resp>)`
+
+### Redemption request
+
+Primary client request that is verified by btd
+
+- `<token>` is an original token generated for an issuance request.
+
+- `<shared-point>` is the corresponding unblinded, signed point received from an issuance response. This point is SEC1 encoded.
+
+- `<shared-info>` is some shared information that is used for deriving a HMAC key (usually a host header and a http path)
+
+- `HMAC()` is a HMAC function that uses SHA256
+
+- `<derived-key>` is the derived key output by:
+    
+    `HMAC("hash_derive_key", <token>, <shared-point>)`
+
+- `<request-binding>` is the output of the following:
+
+    `HMAC("hash_request_binding", <derived-key>, <shared-info>)`
+
+- `<Redeem-JSON-struct>`:
+
+    ```
+    {
+        "type":"Redeem",
+        "contents":"<request-binding>"
+    }
+    ```
+- `<Wrapped-Redeem>` is the JSON struct that is actually received:
+    
+    ```
+    {
+        "bl_sig_req":"base64(<Redeem-JSON-struct>)",
+        "host":"<host>"
+        "http":"<http-path>"
+    }
+    ```
+
+### Redemption response
+
+Server response header used if errors occur. If this header is sent the plugin discards all stored tokens.
+
+- `<resp-val>` is the value returned by btd on verification. Returns "success" on successful verification. If an error has occurred then it takes the value 5 or 6, where 5 is a connection error and 6 is a token verification error.
+
+## Protocol sketch
 
 The core difference is that where we previously relied on asymmetric cryptography for signatures, we can instead construct a symmetric exchange in which a secret key known only to the edge is used to create per-token MAC keys for each redemption request in a way that prevents the server from learning the token values and the client from learning the secret key. A full technical overview of this protocol can be read [here](https://github.com/cloudflare/challenge-bypass-extension).
 
-Given a group setting and three hashes H\_1, H\_2, H\_3 we build a commitment to a random token per request using a secret key x held by the edge servers. H\_1 and H\_2 are hash functions onto, respectively, the group and {0, 1}^λ where λ is a security parameter. The server also publishes publically a generator g along with a commitment (or 'public key') y = g^x, this is used for generating discrete-log equivalence proofs (DLEQs). We provide a brief overview of the how DLEQs are generated and verified [below](#nizk-proofs-of-discrete-log-equality).
+Given a group setting and three hashes H\_1, H\_2, H\_3 we build a commitment to a random token per request using a secret key x held by the edge servers. H\_1 and H\_2 are hash functions onto, respectively, the group and {0, 1}^λ where λ is a security parameter. The server also publishes publicly a generator g along with a commitment (or 'public key') y = g^x, this is used for generating discrete-log equivalence proofs (DLEQs). We provide a brief overview of the how DLEQs are generated and verified [below](#nizk-proofs-of-discrete-log-equality).
 
-1. Client generates random token `x` and a blinding factor `r`.
+1. Client generates random token `t` and a blinding factor `r`.
 2. Client calculates `p = H_1(t)^r` and sends `p` to the edge along with a CAPTCHA solution.
 3. Edge validates the solution and computes `q = p^x = H_1(t)^(rx)` and a DLEQ proof `π` dependent on the output of `H_3` over `g,y,p,q` and other group elements -- see below for more details.
 4. The server returns `(q,π)` to the client.
@@ -57,7 +162,7 @@ Given a group setting and three hashes H\_1, H\_2, H\_3 we build a commitment to
 7. The server uses `t` as a double-spend index and recalculates `n` using `x`. Then it can validate the MAC using the shared key.
 8. We know that a matching commitment value is valid because generating it requires access to `x`.
 
-#### NIZK proofs of discrete-log equality
+### NIZK proofs of discrete-log equality
 
 In step (3.) above, we call for a zero-knowledge proof of the equality of a discrete logarithm (our edge key) with regard to the returned token `q` that the client receives. This allows the client to verify that the same key `x` is being used to 'sign' all tokens that are sent to the edge.
 
@@ -97,7 +202,7 @@ The proof follows the standard non-interactive Schnorr pattern. For a group of p
 If all users share a consistent view of the tuple (y, g) for each key epoch, they can all prove that the tokens they have been issued share the same anonymity set with respect to k. One way to ensure this consistent view is to pin a key in each copy of the client and use software update mechanisms for rotation. A more flexible way is to pin a reference that allows each client to fetch the latest version of the key from a trusted location. We currently use the former method but plan to migrate to the latter in the near future.
 
 
-#### Batch proofs
+### Batch proofs
 
 In practice, the issuance protocol operates over sets of tokens rather than just one. A system parameter, m, determines how many tokens a user is allowed to request per valid CAPTCHA solution. Consequently, users generate (t\_1, t\_2, ... , t\_m) and (b\_1, b\_2, ... , b\_m); send (p\_1, p\_2, ... , p\_m) to the edge; and receive (q\_1, q\_2 ... , q\_m) in response.
 
