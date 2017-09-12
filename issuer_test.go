@@ -6,9 +6,15 @@ import (
 	"crypto/elliptic"
 	crand "crypto/rand"
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/cloudflare/btd/crypto"
+)
+
+var (
+	testHost = []byte("example.com")
+	testPath = []byte("/index.html")
 )
 
 // Generates a small but well-formed ISSUE request for testing.
@@ -35,6 +41,73 @@ func makeTokenIssueRequest() (*BlindTokenRequest, [][]byte, []*crypto.Point, [][
 		Contents: marshaledTokenList, // this is [][]byte, not JSON
 	}
 	return request, tokens, bP, bF, nil
+}
+
+func makeTokenRedempRequest() (*BlindTokenRequest, []byte, error) {
+	// Client
+	request, tokens, _, bF, err := makeTokenIssueRequest()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Client -> (request) -> Server
+
+	// Server
+	// 2a. Have secret key
+	x, _, _, err := elliptic.GenerateKey(elliptic.P256(), crand.Reader)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// 2b. generate commitment
+	G, H, err := fakeCommitments(x)
+	if err != nil {
+		return nil, nil, errors.New("couldn't even fake the commitments")
+	}
+
+	// 2c. Sign the blind points
+	marshaledData, err := ApproveTokens(*request, x, G, H)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Client <- (signed blind tokens) <- Server
+
+	// Client
+	// 3a. Umarshal signed+blinded points
+	// XXX: hardcoded curve assumption
+	curve := elliptic.P256()
+	hash := stdcrypto.SHA256
+	marshaledPoints, marshaledBP := crypto.GetMarshaledPointsAndDleq(marshaledData)
+	xbP, err := crypto.BatchUnmarshalPoints(curve, marshaledPoints)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// 3b. Unmarshal and verify batch proof
+	batchProof := &crypto.BatchProof{}
+	err = batchProof.Unmarshal(curve, marshaledBP)
+	if err != nil {
+		return nil, nil, err
+	}
+	if !batchProof.Verify() {
+		return nil, nil, errors.New("Batch proof failed to verify")
+	}
+
+	// 3c. Unblind a point
+	xT := crypto.UnblindPoint(xbP[0], bF[0])
+	// 3d. Derive MAC key
+	sk := crypto.DeriveKey(hash, xT, tokens[0])
+	// 3e. MAC the request binding data
+	reqData := [][]byte{testHost, testPath}
+	reqBinder := crypto.CreateRequestBinding(hash, sk, reqData)
+
+	redeemRequest := &BlindTokenRequest{
+		Type:     "Redeem",
+		Contents: [][]byte{tokens[0], reqBinder},
+	}
+
+	return redeemRequest, x, nil
 }
 
 // This function exists only for testing. The wrapper is a transport format
@@ -149,75 +222,30 @@ func TestTokenIssuance(t *testing.T) {
 // TODO: TestDLEQProof
 
 func TestTokenRedemption(t *testing.T) {
-	// Client
-	request, tokens, _, bF, err := makeTokenIssueRequest()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Client -> (request) -> Server
-
-	// Server
-	// 2a. Have secret key
-	x, _, _, err := elliptic.GenerateKey(elliptic.P256(), crand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// 2b. generate commitment
-	G, H, err := fakeCommitments(x)
-	if err != nil {
-		t.Fatal("couldn't even fake the commitments")
-	}
-
-	// 2c. Sign the blind points
-	marshaledData, err := ApproveTokens(*request, x, G, H)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Client <- (signed blind tokens) <- Server
-
-	// Client
-	// 3a. Umarshal signed+blinded points
-	// XXX: hardcoded curve assumption
-	curve := elliptic.P256()
-	hash := stdcrypto.SHA256
-	marshaledPoints, marshaledBP := crypto.GetMarshaledPointsAndDleq(marshaledData)
-	xbP, err := crypto.BatchUnmarshalPoints(curve, marshaledPoints)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// 3b. Unmarshal and verify batch proof
-	batchProof := &crypto.BatchProof{}
-	err = batchProof.Unmarshal(curve, marshaledBP)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !batchProof.Verify() {
-		t.Fatal("Batch proof failed to verify")
-	}
-
-	// 3c. Unblind a point
-	xT := crypto.UnblindPoint(xbP[0], bF[0])
-	// 3d. Derive MAC key
-	sk := crypto.DeriveKey(hash, xT, tokens[0])
-	// 3e. MAC the request binding data
-	reqData := [][]byte{[]byte("example.com"), []byte("/index.html")}
-	reqBinder := crypto.CreateRequestBinding(hash, sk, reqData)
-
-	redeemRequest := &BlindTokenRequest{
-		Type:     "Redeem",
-		Contents: [][]byte{tokens[0], reqBinder},
-	}
-
 	// Client -> (tokens[0], requestBinder) -> Server
-
-	// Server
-	// 4a. Check token redemption
-	err = RedeemToken(*redeemRequest, []byte("example.com"), []byte("/index.html"), x)
+	blRedempreq, x, err := makeTokenRedempRequest()
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	// Server
+	// Check valid token redemption
+	err = RedeemToken(*blRedempreq, testHost, testPath, x)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestBadMAC(t *testing.T) {
+	blRedempreq, x, err := makeTokenRedempRequest()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Server
+	// Check bad token redemption
+	err = RedeemToken(*blRedempreq, []byte("something bad"), []byte("something worse"), x)
+	if err == nil {
+		t.Fatal("No error occurred even though MAC should be bad")
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"crypto/elliptic"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"github.com/cloudflare/btd/crypto"
 	"github.com/cloudflare/btd/metrics"
 	"math/big"
@@ -88,7 +89,7 @@ func RedeemToken(req BlindTokenRequest, host, path, key []byte) error {
 
 	if !valid {
 		metrics.CounterRedeemErrorVerify.Inc()
-		return ErrInvalidMAC
+		return fmt.Errorf("%s, host: %s, path: %s", ErrInvalidMAC.Error(), host, path)
 	}
 
 	doubleSpent := SpentTokens.CheckToken(token)
