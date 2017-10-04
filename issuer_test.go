@@ -209,17 +209,23 @@ func TestTokenIssuance(t *testing.T) {
 		t.Fatal("couldn't even fake the commitments")
 	}
 
-	marshaledTokenList, err := ApproveTokens(req, key, G, H)
+	marshaledResp, err := ApproveTokens(req, key, G, H)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if bytes.Equal(marshaledTokenList[0], req.Contents[0]) {
+	if bytes.Equal(marshaledResp[0], req.Contents[0]) {
 		t.Fatal("approved tokens were same as submitted tokens")
 	}
-}
 
-// TODO: TestDLEQProof
+	// Verify DLEQ proof
+	dleqIndex := len(marshaledResp) - 1
+	batchDleq := &crypto.BatchProof{}
+	batchDleq.Unmarshal(elliptic.P256(), marshaledResp[dleqIndex])
+	if !batchDleq.Verify() {
+		t.Fatal("Batch DLEQ proof failed to verify")
+	}
+}
 
 func TestTokenRedemption(t *testing.T) {
 	// Client -> (tokens[0], requestBinder) -> Server
