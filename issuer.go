@@ -5,6 +5,7 @@ import (
 	"crypto/elliptic"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"github.com/cloudflare/btd/crypto"
 	"github.com/cloudflare/btd/metrics"
 	"math/big"
@@ -19,6 +20,7 @@ var (
 	ErrTooFewRedemptionArguments = errors.New("REDEEM request did not contain enough arguments")
 	ErrUnexpectedRequestType     = errors.New("unexpected request type")
 	ErrInvalidBatchProof         = errors.New("New batch proof for signed tokens is invalid")
+	ErrNotOnCurve                = errors.New("One or more points not found on curve")
 
 	// XXX: this is a fairly expensive piece of init
 	SpentTokens = NewDoubleSpendList()
@@ -37,6 +39,9 @@ func ApproveTokens(req BlindTokenRequest, key []byte, G, H *crypto.Point) ([][]b
 	// Sign the points
 	Q := make([]*crypto.Point, len(P))
 	for i := 0; i < len(Q); i++ {
+		if !P[i].IsOnCurve() {
+			return nil, ErrNotOnCurve
+		}
 		Q[i] = crypto.SignPoint(P[i], key)
 	}
 
@@ -88,7 +93,7 @@ func RedeemToken(req BlindTokenRequest, host, path, key []byte) error {
 
 	if !valid {
 		metrics.CounterRedeemErrorVerify.Inc()
-		return ErrInvalidMAC
+		return fmt.Errorf("%s, host: %s, path: %s", ErrInvalidMAC.Error(), host, path)
 	}
 
 	doubleSpent := SpentTokens.CheckToken(token)
