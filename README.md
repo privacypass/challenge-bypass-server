@@ -21,15 +21,13 @@ This is a TCP server that is comptaible with the [Privacy Pass](https://github.c
      * [Benefits vs blind-RSA protocol](#benefits-vs-blind-rsa-protocol)
   * [Acknowledgements](#acknowledgements)
 
-## Main authors
+## Team
 
-- [George Tankersley](https://github.com/gtank) (george.tankersley@gmail.com)
-- [Alex Davidson](https://github.com/alxdavids) (alex.davidson.92@gmail.com) 
-
-## Other contributors
-
-- [Nick Sullivan](https://github.com/grittygrease) (nick@cloudflare.com)
-- [Filippo Valsorda](https://github.com/filosottile) (hello@filippo.io)
+- [Alex Davidson](https://alxdavids.xyz)
+- [Ian Goldberg](https://cs.uwaterloo.ca/~iang/)
+- [Nick Sullivan](https://github.com/grittygrease)
+- [George Tankersley](https://gtank.cc)
+- [Filippo Valsorda](https://github.com/filosottile)
 
 ## Quickstart
 
@@ -58,7 +56,7 @@ A **pseudorandom function** is a function whose output cannot be efficiently dis
 
 An **oblivious pseudorandom function (OPRF)** is a two-party protocol between sender *S* and receiver *R* for securely computing a pseudorandom function *f_x(·)* on key *x* contributed by *S* and input *t* contributed by *R*, in such a way that receiver *R* learns only the value *f_x(t)* while sender *S* learns nothing from the interaction. The output of an OPRF on some input *t* is known as a **signature** for *t*.
 
-In this protocol, the edge is the "sender" holding *x* and the inputs *t* are the tokens. So the clients don't learn our key and we don't learn the token values.
+In this protocol, the edge (also referred to as the server) is the "sender" holding *x* and the inputs *t* are the tokens. So the clients don't learn our key and we don't learn the token values.
 
 ### Message formats
 
@@ -169,22 +167,22 @@ Server response header used if errors occur. If this header is sent the plugin d
 
 We detail a 'blind-signing' protocol written by George Tankersley that uses a VOPRF to contruct per-token shared keys for a MAC over each redemption request. This hides the token values themselves until redemption and obviates the need for public key encryption. A full technical overview of this protocol can be read [here](https://github.com/privacypass/challenge-bypass-extension/PROTOCOL.md).
 
-Given a group setting and three hashes `H_1, H_2, H_3` we build a commitment to a random token per request using a secret key `x` held by the edge servers. `H_1` and `H_2` are hash functions onto, respectively, the group and `{0, 1}^λ` where `λ` is a security parameter. The server also publishes publicly a generator `G` along with a commitment (or 'public key') `Y = xG` (in the code we use `H` instead of `Y` but use `Y` to avoid conflict with the hash functions that we use). The pair `(G,Y)` is used for generating discrete-log equivalence proofs (DLEQs). We provide a brief overview of the how DLEQs are generated and verified [below](#nizk-proofs-of-discrete-log-equality).
+Given a group setting and three hashes `H_1, H_2, H_3` we build a commitment to a random token per request using a secret key `x` held by the edge servers. `H_1` and `H_2` are hash functions onto, respectively, the group and `{0, 1}^λ` where `λ` is a security parameter. The edge (or server) also publishes publicly a generator `G` along with a commitment (or 'public key') `Y = xG` (in the code we use `H` instead of `Y` but use `Y` to avoid conflict with the hash functions that we use). The pair `(G,Y)` is used for generating discrete-log equivalence proofs (DLEQs). We provide a brief overview of the how DLEQs are generated and verified [below](#nizk-proofs-of-discrete-log-equality).
 
 1. Client generates random token `t` and a blinding factor `r`.
 2. Client calculates `T = H_1(t)` and sends `M = rT` to the edge along with a CAPTCHA solution.
 3. Edge validates the solution and computes `Z = xM = rxT` and a DLEQ proof `π` dependent on the output of `H_3` over `G,Y,M,Z` and other group elements -- see below for more details.
-4. The server returns `(Z,π)` to the client.
-5. Client unblinds `Z` to retrieve `N = r^(-1)Z = xT`. Now both the server and the client can calculate `H_2(t, N)` as a shared key for the MAC.
+4. The edge returns `(Z,π)` to the client.
+5. Client unblinds `Z` to retrieve `N = r^(-1)Z = xT` and stores the pair `(t,N)`.
 6. When the client wants to redeem a token it presents `(t, MAC(request-binding-data))` where `request-binding-data` is made of information observable by the edge that is unique(ish) to that particular request.
-7. The server uses `T` as a double-spend index and recalculates `N` using `x`. Then it can validate the MAC using the shared key.
+7. The edge uses `T` as a double-spend index and recalculates `N` using `x`. Then it can validate the MAC using the shared key.
 8. We know that a matching commitment value is valid because generating it requires access to `x`.
 
 #### NIZK proofs of discrete-log equality
 
 In step (3.) above, we call for a zero-knowledge proof of the equality of a discrete logarithm (our edge key) with regard to the returned token `Z` that the client receives. This allows the client to verify that the same key `x` is being used to 'sign' all tokens that are sent to the edge.
 
-The protocol naturally provides `Z = xM` in the edge response. To ensure that the edge has not used unique `x` value to tag users, we require them to publish a public key, `Y = xG`, as mentioned above. If `M`, `Z` are orthogonal we can use a Chaum-Pedersen proof [CP93] to prove in zero knowledge that `log_G(Y) == log_M(Z)`. We note this as `DLEQ(Z/M == Y/G)`.
+The protocol naturally provides `Z = xM` in the edge response. To ensure that the edge has not used unique `x` value to tag users, we require them to publish a public key, `Y = xG`, as mentioned above. We can now use a Chaum-Pedersen proof [CP93] to prove in zero knowledge that `log_G(Y) == log_M(Z)`. We note this as `DLEQ(Z/M == Y/G)`.
 
 The proof follows the standard non-interactive Schnorr pattern. For a group of prime order `q` with orthogonal generators `M`, `G`, public key `Y`, and point `Z`:
 
@@ -217,7 +215,7 @@ The proof follows the standard non-interactive Schnorr pattern. For a group of p
 
    and checks that c == c'.
 
-If all users share a consistent view of the tuple `(G,Y)` for each key epoch, they can all prove that the tokens they have been issued share the same anonymity set with respect to k. One way to ensure this consistent view is to pin a key in each copy of the client and use software update mechanisms for rotation. A more flexible way is to pin a reference that allows each client to fetch the latest version of the key from a trusted location. We currently use the former method but plan to migrate to the latter in the near future.
+If all users share a consistent view of the tuple `(G,Y)` for each key epoch, they can all prove that the tokens that every client has been issued share the same anonymity set with respect to `x`. One way to ensure this consistent view is to pin one key at a time in each copy of the client and use software update mechanisms for rotation. A more flexible way is to pin a reference that allows each client to fetch the latest version of the key from a trusted location. We currently use the former method but plan to migrate to the latter in the near future.
 
 
 #### Batch proofs
@@ -228,7 +226,7 @@ Generating an independent proof of equality for each point implies excess overhe
 
 Given `(G, Y, q)`; `(M_1,...,M_m)`, `(Z_1, ... ,Z_m)`; `Z_i = k(M_i)` for i = 1...m
 
-1. Prover calculates a seed using a Fiat-Shamir transform:
+1. Prover calculates a seed using:
 
         z = H_3(G, Y, M_1, ... , M_m, Z_1, ... , Z_m)
 
@@ -258,14 +256,6 @@ For `(M_1, M_2)`, `(Z_1, Z_2)`, and `(c_1, c_2)`:
     (c_1*Z_1) + (c_2*Z_2) = x[(c_1*M_1) + (c_2*M_2)]
 
 So the composite points will have the same discrete log relation x as the underlying individual points.
-
-### Benefits vs blind-RSA protocol
-
-- 10x savings in token size (~256 bits instead of ~2048)
-- Simpler & faster primitives (also: available in-browser via SJCL)
-- No need for public-key encryption at all, since the derived shared key used to calculate each MAC is never transmitted and cannot be calculated without knowledge of the edge key or the client's blinding factor.
-- The only secret to be managed is a 32-byte scalar.
-- Easier key rotation. Instead of managing RSA certificates with pinning or transparency, we can publish/pin the commitment component of a DLEQ proof to allow clients to positively verify they're in the same anonymity set with regard to `x` as everyone else. Alternatively or additionally, if we publish historical k values then auditors who save their b results can check our honesty.
 
 ## Acknowledgements
 
