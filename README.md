@@ -4,8 +4,6 @@ This is a TCP server that is comptaible with the [Privacy Pass](https://github.c
 
 ### Contents
 
-  * [Main authors](#main-authors)
-  * [Other contributors](#other-contributors)
   * [Quickstart](#quickstart)
   * [Current functionality](#current-functionality)
   * [Overview of design](#overview-of-design)
@@ -18,16 +16,8 @@ This is a TCP server that is comptaible with the [Privacy Pass](https://github.c
      * [Protocol overview](#protocol-overview)
         * [NIZK proofs of discrete-log equality](#nizk-proofs-of-discrete-log-equality)
         * [Batch proofs](#batch-proofs)
-     * [Benefits vs blind-RSA protocol](#benefits-vs-blind-rsa-protocol)
+  * [Team](#team)
   * [Acknowledgements](#acknowledgements)
-
-## Team
-
-- [Alex Davidson](https://alxdavids.xyz)
-- [Ian Goldberg](https://cs.uwaterloo.ca/~iang/)
-- [Nick Sullivan](https://github.com/grittygrease)
-- [George Tankersley](https://gtank.cc)
-- [Filippo Valsorda](https://github.com/filosottile)
 
 ## Quickstart
 
@@ -256,6 +246,14 @@ For `(M_1, M_2)`, `(Z_1, Z_2)`, and `(c_1, c_2)`:
     (c_1*Z_1) + (c_2*Z_2) = x[(c_1*M_1) + (c_2*M_2)]
 
 So the composite points will have the same discrete log relation x as the underlying individual points.
+
+## Team
+
+- [Alex Davidson](https://alxdavids.xyz)
+- [Ian Goldberg](https://cs.uwaterloo.ca/~iang/)
+- [Nick Sullivan](https://github.com/grittygrease)
+- [George Tankersley](https://gtank.cc)
+- [Filippo Valsorda](https://github.com/filosottile)
 
 ## Acknowledgements
 
