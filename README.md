@@ -178,7 +178,7 @@ The proof follows the standard non-interactive Schnorr pattern. For a group of p
 
 1. Prover chooses a random nonce
 
-        k <--$-- Z/QZ
+        k <--$-- Z/qZ
 
 2. Prover commits to the nonce `k` with respect to both generators
 
@@ -192,7 +192,7 @@ The proof follows the standard non-interactive Schnorr pattern. For a group of p
 
         s = k - cx (mod q)
 
-5. Prover sends (c, s) to the verifier
+5. Prover sends `(c, s)` to the verifier
 
 6. Verifier recalculates commitments
 
@@ -203,7 +203,7 @@ The proof follows the standard non-interactive Schnorr pattern. For a group of p
 
         c' = H_3(G,Y,M,Z,A',B')
 
-   and checks that c == c'.
+   and checks that `c == c'`.
 
 If all users share a consistent view of the tuple `(G,Y)` for each key epoch, they can all prove that the tokens that every client has been issued share the same anonymity set with respect to `x`. One way to ensure this consistent view is to pin one key at a time in each copy of the client and use software update mechanisms for rotation. A more flexible way is to pin a reference that allows each client to fetch the latest version of the key from a trusted location. We currently use the former method but plan to migrate to the latter in the near future.
 
@@ -214,17 +214,17 @@ In practice, the issuance protocol operates over sets of tokens rather than just
 
 Generating an independent proof of equality for each point implies excess overhead in both computation and bandwidth consumption. Therefore, we employ a batch proof to show consistent key usage for an entire set of tokens at once.  The proof is a parallelized Schnorr protocol for the common-exponent case taken from [Hen14] and adapted for non-interactivity:
 
-Given `(G, Y, q)`; `(M_1,...,M_m)`, `(Z_1, ... ,Z_m)`; `Z_i = k(M_i)` for i = 1...m
+Given `(G, Y, q)`; `(M_1,...,M_m)`, `(Z_1, ... ,Z_m)`; `Z_i = k(M_i)` for `i = 1...m`
 
 1. Prover calculates a seed using:
 
         z = H_3(G, Y, M_1, ... , M_m, Z_1, ... , Z_m)
 
-2. Prover initializes PRNG(z) and samples from it to non-interactively generate
+2. Prover initializes `PRNG(z)` and samples from it to non-interactively generate
 
         c_1, ... , c_m <--$-- Z/qZ.
 
-3. Prover generates composite group elements M and Z
+3. Prover generates composite group elements `M` and `Z`
 
         M = (c_1*M_1) + (c_2*M_2) + ... + (c_m*M_m)
         Z = (c_1*Z_1) + (c_2*Z_2) + ... + (c_m*Z_m)
@@ -233,7 +233,7 @@ Given `(G, Y, q)`; `(M_1,...,M_m)`, `(Z_1, ... ,Z_m)`; `Z_i = k(M_i)` for i = 1.
 
         (c, s) <-- DLEQ(M/Z == Y/G)
 
-5. Verifier recalculates the PRNG seed from protocol state, generates the composite elements, and checks that c' == c as in the single-element proof above.
+5. Verifier recalculates the PRNG seed from protocol state, generates the composite elements, and checks that `c' == c` as in the single-element proof above.
 
 We can see why this works in a reduced case.
 
@@ -245,7 +245,7 @@ For `(M_1, M_2)`, `(Z_1, Z_2)`, and `(c_1, c_2)`:
     (c_2*Z_2) = c_2(x*M_2) = x(c_2*M_2)
     (c_1*Z_1) + (c_2*Z_2) = x[(c_1*M_1) + (c_2*M_2)]
 
-So the composite points will have the same discrete log relation x as the underlying individual points.
+So the composite points will have the same discrete log relation `x` as the underlying individual points.
 
 ## Team
 
@@ -257,4 +257,4 @@ So the composite points will have the same discrete log relation x as the underl
 
 ## Acknowledgements
 
-We'd like to thank Dan Boneh for suggesting OPRFs in the first place; Ian Goldberg for his extensive advice and the batch proof; and Brian Warner, Zaki Manian, Tony Arcieri, Isis Lovecruft, Henry de Valence, Trevor Perrin, and several anonymous others for their valuable help, input, and review.
+We'd like to thank Dan Boneh for suggesting OPRFs in the first place; Ian Goldberg for his extensive advice and the batch proof; and Brian Warner, Zaki Manian, Tony Arcieri, Isis Lovecruft, Henry de Valence, Trevor Perrin, Yan Zhu, Peter Wu, Zi Lin and several anonymous others for their valuable help, input, and review.
