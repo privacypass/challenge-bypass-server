@@ -13,9 +13,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/cloudflare/btd"
-	"github.com/cloudflare/btd/crypto"
-	"github.com/cloudflare/btd/metrics"
+	"github.com/privacypass/challenge-bypass-server"
+	"github.com/privacypass/challenge-bypass-server/crypto"
+	"github.com/privacypass/challenge-bypass-server/metrics"
 )
 
 var (

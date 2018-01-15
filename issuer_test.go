@@ -9,7 +9,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/cloudflare/btd/crypto"
+	"github.com/privacypass/challenge-bypass-server/crypto"
 )
 
 var (
@@ -45,7 +45,7 @@ func makeTokenIssueRequest() (*BlindTokenRequest, [][]byte, []*crypto.Point, [][
 
 func makeTokenRedempRequest() (*BlindTokenRequest, []byte, error) {
 	// Client
-	request, tokens, _, bF, err := makeTokenIssueRequest()
+	request, tokens, bP, bF, err := makeTokenIssueRequest()
 	if err != nil {
 		return nil, nil, err
 	}
@@ -85,12 +85,19 @@ func makeTokenRedempRequest() (*BlindTokenRequest, []byte, error) {
 	}
 
 	// 3b. Unmarshal and verify batch proof
-	batchProof := &crypto.BatchProof{}
-	err = batchProof.Unmarshal(curve, marshaledBP)
+	// We need to re-sign all the tokens and re-compute
+	dleq, err := crypto.UnmarshalBatchProof(curve, marshaledBP)
 	if err != nil {
 		return nil, nil, err
 	}
-	if !batchProof.Verify() {
+	dleq.G = G
+	dleq.H = H
+	Q := signTokens(bP, x)
+	dleq.M, dleq.Z, err = recomputeComposites(G, H, bP, Q, hash, curve)
+	if err != nil {
+		return nil, nil, err
+	}
+	if !dleq.Verify() {
 		return nil, nil, errors.New("Batch proof failed to verify")
 	}
 
@@ -108,6 +115,21 @@ func makeTokenRedempRequest() (*BlindTokenRequest, []byte, error) {
 	}
 
 	return redeemRequest, x, nil
+}
+
+// Recompute composite values for DLEQ proof
+func recomputeComposites(G, Y *crypto.Point, P, Q []*crypto.Point, hash stdcrypto.Hash, curve elliptic.Curve) (*crypto.Point, *crypto.Point, error) {
+	compositeM, compositeZ, _, err := crypto.ComputeComposites(hash, curve, G, Y, P, Q)
+	return compositeM, compositeZ, err
+}
+
+// Sign tokens for verifying DLEQ proof
+func signTokens(P []*crypto.Point, key []byte) []*crypto.Point {
+	Q := make([]*crypto.Point, len(P))
+	for i := 0; i < len(Q); i++ {
+		Q[i] = crypto.SignPoint(P[i], key)
+	}
+	return Q
 }
 
 // This function exists only for testing. The wrapper is a transport format
@@ -130,12 +152,16 @@ func fakeWrappedRequest() ([]byte, error) {
 	return MarshalRequest(wrapped)
 }
 
-func fakeIssueRequest() ([]byte, error) {
-	req, _, _, _, err := makeTokenIssueRequest()
+func fakeIssueRequest() ([]byte, []*crypto.Point, error) {
+	req, _, P, _, err := makeTokenIssueRequest()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return MarshalRequest(req)
+	m, err := MarshalRequest(req)
+	if err != nil {
+		return nil, nil, err
+	}
+	return m, P, nil
 }
 
 func fakeSigningKey() ([]byte, error) {
@@ -185,7 +211,7 @@ func TestParseWrappedRequest(t *testing.T) {
 }
 
 func TestTokenIssuance(t *testing.T) {
-	reqBytes, err := fakeIssueRequest()
+	reqBytes, bP, err := fakeIssueRequest()
 	if err != nil {
 		t.Fatalf("it's all borked")
 	}
@@ -220,10 +246,16 @@ func TestTokenIssuance(t *testing.T) {
 
 	// Verify DLEQ proof
 	dleqIndex := len(marshaledResp) - 1
-	batchDleq := &crypto.BatchProof{}
-	batchDleq.Unmarshal(elliptic.P256(), marshaledResp[dleqIndex])
-	if !batchDleq.Verify() {
-		t.Fatal("Batch DLEQ proof failed to verify")
+	dleq, err := crypto.UnmarshalBatchProof(elliptic.P256(), marshaledResp[dleqIndex])
+	if err != nil {
+		t.Fatal(err)
+	}
+	dleq.G = G
+	dleq.H = H
+	Q := signTokens(bP, key)
+	dleq.M, dleq.Z, err = recomputeComposites(G, H, bP, Q, stdcrypto.SHA256, elliptic.P256())
+	if !dleq.Verify() {
+		t.Fatal("DLEQ proof failed to verify")
 	}
 }
 

@@ -46,13 +46,30 @@ func NewBatchProof(hash crypto.Hash, g, h *Point, m []*Point, z []*Point, x *big
 	// The underlying proof and validation steps will do consistency checks.
 	curve := g.Curve
 
-	// seed = H(g, h, [m], [z])
+	compositeM, compositeZ, C, err := ComputeComposites(hash, curve, g, h, m, z)
+	if err != nil {
+		return nil, err
+	}
+
+	proof, err := NewProof(hash, g, h, compositeM, compositeZ, x)
+	if err != nil {
+		return nil, err
+	}
+	return &BatchProof{
+		P: proof,
+		M: m, Z: z,
+		C: C,
+	}, nil
+}
+
+func ComputeComposites(hash crypto.Hash, curve elliptic.Curve, G, Y *Point, P, Q []*Point) (*Point, *Point, [][]byte, error) {
+	// seed = H(G, Y, [P], [Qs])
 	H := hash.New()
-	H.Write(g.Marshal())
-	H.Write(h.Marshal())
-	for i := 0; i < len(m); i++ {
-		H.Write(m[i].Marshal())
-		H.Write(z[i].Marshal())
+	H.Write(G.Marshal())
+	H.Write(Y.Marshal())
+	for i := 0; i < len(P); i++ {
+		H.Write(P[i].Marshal())
+		H.Write(Q[i].Marshal())
 	}
 	seed := H.Sum(nil)
 
@@ -71,16 +88,16 @@ func NewBatchProof(hash crypto.Hash, g, h *Point, m []*Point, z []*Point, x *big
 	// can be compared to the public key in the standard two-point DLEQ proof.
 
 	Mx, My, Zx, Zy := new(big.Int), new(big.Int), new(big.Int), new(big.Int)
-	C := make([][]byte, len(m))
-	for i := 0; i < len(m); i++ {
+	C := make([][]byte, len(P))
+	for i := 0; i < len(P); i++ {
 		ci, _, err := randScalar(curve, prng)
 		if err != nil {
-			return nil, err
+			return nil, nil, nil, err
 		}
 		// cM = c[i]M[i]
-		cMx, cMy := curve.ScalarMult(m[i].X, m[i].Y, ci)
+		cMx, cMy := curve.ScalarMult(P[i].X, P[i].Y, ci)
 		// cZ = c[i]Z[i]
-		cZx, cZy := curve.ScalarMult(z[i].X, z[i].Y, ci)
+		cZx, cZy := curve.ScalarMult(Q[i].X, Q[i].Y, ci)
 		// Accumulate
 		Mx, My = curve.Add(cMx, cMy, Mx, My)
 		Zx, Zy = curve.Add(cZx, cZy, Zx, Zy)
@@ -89,15 +106,7 @@ func NewBatchProof(hash crypto.Hash, g, h *Point, m []*Point, z []*Point, x *big
 	compositeM := &Point{Curve: curve, X: Mx, Y: My}
 	compositeZ := &Point{Curve: curve, X: Zx, Y: Zy}
 
-	proof, err := NewProof(hash, g, h, compositeM, compositeZ, x)
-	if err != nil {
-		return nil, err
-	}
-	return &BatchProof{
-		P: proof,
-		M: m, Z: z,
-		C: C,
-	}, nil
+	return compositeM, compositeZ, C, nil
 }
 
 func (b *BatchProof) IsComplete() bool {
@@ -139,7 +148,7 @@ func (b *BatchProof) MarshalForResp() ([]byte, error) {
 		return nil, err
 	}
 
-	bpEnc := map[string]interface{}{"P": prB64, "M": b.M, "Z": b.Z, "C": b.C}
+	bpEnc := map[string]interface{}{"P": prB64}
 
 	bpJson, err := json.Marshal(bpEnc)
 	if err != nil {
@@ -147,13 +156,12 @@ func (b *BatchProof) MarshalForResp() ([]byte, error) {
 	}
 
 	resp := []byte(BATCH_PROOF_RESP_STR + string(bpJson))
-
 	return resp, nil
 }
 
 // Takes the batch proof marshaled above and unmarshals it
 // Can be used with either the BATCH_PROOF_RESP_STR attached or not
-func (b *BatchProof) Unmarshal(curve elliptic.Curve, data []byte) error {
+func UnmarshalBatchProof(curve elliptic.Curve, data []byte) (*Proof, error) {
 	dataStr := string(data)
 	// If the resp string is still attached then remove it
 	if strings.Contains(dataStr, BATCH_PROOF_RESP_STR) {
@@ -169,41 +177,17 @@ func (b *BatchProof) Unmarshal(curve elliptic.Curve, data []byte) error {
 	// Have to decode base64 proof separately
 	prBytes, err := b64.StdEncoding.DecodeString(bpDat["P"].(string))
 	if err != nil {
-		return err
+		return nil, err
 	}
 	ep := &Base64Proof{}
 	json.Unmarshal(prBytes, ep)
 	proof, err := ep.DecodeProof(curve)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	proof.hash = crypto.SHA256
 
-	// Decode rest of batch proof contents
-	mStr := bpDat["M"].([]interface{})
-	M, err := decodeToPointArray(curve, mStr)
-	if err != nil {
-		return err
-	}
-
-	zStr := bpDat["Z"].([]interface{})
-	Z, err := decodeToPointArray(curve, zStr)
-	if err != nil {
-		return err
-	}
-
-	cStr := bpDat["C"].([]interface{})
-	C := make([][]byte, len(cStr))
-	for i, v := range cStr {
-		vBytes, err := b64.StdEncoding.DecodeString(v.(string))
-		if err != nil {
-			return err
-		}
-		C[i] = vBytes
-	}
-
-	b.P, b.M, b.Z, b.C = proof, M, Z, C
-	return nil
+	return proof, nil
 }
 
 // Takes a base64 encoded array of points and returns an array of points
