@@ -40,8 +40,6 @@ type Proof struct {
 }
 
 type Base64Proof struct {
-	G, M string
-	H, Z string
 	R    string
 	C    string
 }
@@ -151,10 +149,6 @@ func (pr *Proof) Verify() bool {
 // Base64 encode the fields of the DLEQ proof for sending back to client
 func (pr *Proof) EncodeProof() *Base64Proof {
 	ep := &Base64Proof{}
-	ep.G = b64.StdEncoding.EncodeToString(pr.G.Marshal())
-	ep.H = b64.StdEncoding.EncodeToString(pr.H.Marshal())
-	ep.M = b64.StdEncoding.EncodeToString(pr.M.Marshal())
-	ep.Z = b64.StdEncoding.EncodeToString(pr.Z.Marshal())
 	ep.R = b64.StdEncoding.EncodeToString(pr.R.Bytes())
 	ep.C = b64.StdEncoding.EncodeToString(pr.C.Bytes())
 
@@ -165,28 +159,6 @@ func (pr *Proof) EncodeProof() *Base64Proof {
 func (ep *Base64Proof) DecodeProof(curve elliptic.Curve) (*Proof, error) {
 	pr := &Proof{}
 	var err error
-
-	// Decoded each of the points from b64 to *Point format
-	pr.G, err = decodePoint(curve, ep.G)
-	if err != nil {
-		return nil, err
-	}
-
-	pr.M, err = decodePoint(curve, ep.M)
-	if err != nil {
-		return nil, err
-	}
-
-	pr.H, err = decodePoint(curve, ep.H)
-	if err != nil {
-		return nil, err
-	}
-
-	pr.Z, err = decodePoint(curve, ep.Z)
-	if err != nil {
-		return nil, err
-	}
-
 	// decode big.Int fields
 	RBytes, err := b64.StdEncoding.DecodeString(ep.R)
 	if err != nil {
@@ -201,21 +173,6 @@ func (ep *Base64Proof) DecodeProof(curve elliptic.Curve) (*Proof, error) {
 	pr.C = new(big.Int).SetBytes(CBytes)
 
 	return pr, nil
-}
-
-// Decodes a point from b64 representation
-func decodePoint(curve elliptic.Curve, b64Point string) (*Point, error) {
-	p := &Point{}
-	pBytes, err := b64.StdEncoding.DecodeString(b64Point)
-	if err != nil {
-		return nil, err
-	}
-	err = p.Unmarshal(curve, pBytes)
-	if err != nil {
-		return nil, err
-	}
-
-	return p, nil
 }
 
 // Marshal proof as part of BatchProof objects for responses

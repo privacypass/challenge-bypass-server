@@ -6,10 +6,11 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"github.com/cloudflare/btd/crypto"
-	"github.com/cloudflare/btd/metrics"
 	"math/big"
 	"net"
+
+	"github.com/privacypass/challenge-bypass-server/crypto"
+	"github.com/privacypass/challenge-bypass-server/metrics"
 )
 
 var (

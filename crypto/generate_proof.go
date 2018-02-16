@@ -13,7 +13,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/cloudflare/btd/crypto"
+	"github.com/privacypass/challenge-bypass-server/crypto"
 )
 
 func main() {

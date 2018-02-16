@@ -41,6 +41,20 @@ func generateValidBatchProof(curve elliptic.Curve) (*BatchProof, error) {
 	return NewBatchProof(crypto.SHA256, G, H, M, Z, new(big.Int).SetBytes(x))
 }
 
+func recomputeComposites(curve elliptic.Curve, M, Z []*Point, C [][]byte) (*Point, *Point) {
+	Mx, My, Zx, Zy := new(big.Int), new(big.Int), new(big.Int), new(big.Int)
+	for i := 0; i < len(M); i++ {
+		cMx, cMy := curve.ScalarMult(M[i].X, M[i].Y, C[i])
+		cZx, cZy := curve.ScalarMult(Z[i].X, Z[i].Y, C[i])
+		Mx, My = curve.Add(cMx, cMy, Mx, My)
+		Zx, Zy = curve.Add(cZx, cZy, Zx, Zy)
+	}
+	compositeM := &Point{Curve: curve, X: Mx, Y: My}
+	compositeZ := &Point{Curve: curve, X: Zx, Y: Zy}
+
+	return compositeM, compositeZ
+}
+
 func TestValidBatchProof(t *testing.T) {
 	curve := elliptic.P256()
 	proof, err := generateValidBatchProof(curve)
@@ -113,8 +127,21 @@ func TestMarshalBatchProof(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	bpUnmarshal := &BatchProof{}
-	bpUnmarshal.Unmarshal(curve, respBytes)
+	dleq, err := UnmarshalBatchProof(curve, respBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dleq.G = bp.P.G
+	dleq.H = bp.P.H
+	Mx, My, Zx, Zy := new(big.Int), new(big.Int), new(big.Int), new(big.Int)
+	for i := 0; i < len(bp.M); i++ {
+		cMx, cMy := curve.ScalarMult(bp.M[i].X, bp.M[i].Y, bp.C[i])
+		cZx, cZy := curve.ScalarMult(bp.Z[i].X, bp.Z[i].Y, bp.C[i])
+		Mx, My = curve.Add(cMx, cMy, Mx, My)
+		Zx, Zy = curve.Add(cZx, cZy, Zx, Zy)
+	}
+	dleq.M, dleq.Z = recomputeComposites(curve, bp.M, bp.Z, bp.C)
+	bpUnmarshal := &BatchProof{M: bp.M, Z: bp.Z, C: bp.C, P: dleq}
 	if !bpUnmarshal.Verify() {
 		t.Fatal("Failed to verify unmarshaled batch proof")
 	}
