@@ -106,7 +106,6 @@ func (c *Server) handle(conn *net.TCPConn) error {
 	switch request.Type {
 	case btd.ISSUE:
 		metrics.CounterIssueTotal.Inc()
-		// use the first key as issue key
 		err = btd.HandleIssue(conn, request, c.signKey, c.G, c.H, c.MaxTokens)
 		if err != nil {
 			metrics.CounterIssueError.Inc()
