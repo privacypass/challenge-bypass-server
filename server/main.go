@@ -34,16 +34,18 @@ var (
 )
 
 type Server struct {
-	BindAddress  string `json:"bind_address,omitempty"`
-	ListenPort   int    `json:"listen_port,omitempty"`
-	MetricsPort  int    `json:"metrics_port,omitempty"`
-	MaxTokens    int    `json:"max_tokens,omitempty"`
-	KeyFilePath  string `json:"key_file_path"`
-	CommFilePath string `json:"comm_file_path"`
+	BindAddress        string `json:"bind_address,omitempty"`
+	ListenPort         int    `json:"listen_port,omitempty"`
+	MetricsPort        int    `json:"metrics_port,omitempty"`
+	MaxTokens          int    `json:"max_tokens,omitempty"`
+	SignKeyFilePath    string `json:"sign_key_file_path"`
+	RedeemKeysFilePath string `json:"redeem_keys_file_path"`
+	CommFilePath       string `json:"comm_file_path"`
 
-	key []byte        // a big-endian marshaled big.Int representing an elliptic curve scalar
-	G   *crypto.Point // elliptic curve point representation of generator G
-	H   *crypto.Point // elliptic curve point representation of commitment H to key
+	signKey    []byte        // a big-endian marshaled big.Int representing an elliptic curve scalar for the current signing key
+	redeemKeys [][]byte      // current signing key + all old keys
+	G          *crypto.Point // elliptic curve point representation of generator G
+	H          *crypto.Point // elliptic curve point representation of commitment H to keys[0]
 }
 
 var DefaultServer = &Server{
@@ -104,7 +106,8 @@ func (c *Server) handle(conn *net.TCPConn) error {
 	switch request.Type {
 	case btd.ISSUE:
 		metrics.CounterIssueTotal.Inc()
-		err = btd.HandleIssue(conn, request, c.key, c.G, c.H, c.MaxTokens)
+		// use the first key as issue key
+		err = btd.HandleIssue(conn, request, c.signKey, c.G, c.H, c.MaxTokens)
 		if err != nil {
 			metrics.CounterIssueError.Inc()
 			return err
@@ -112,7 +115,7 @@ func (c *Server) handle(conn *net.TCPConn) error {
 		return nil
 	case btd.REDEEM:
 		metrics.CounterRedeemTotal.Inc()
-		err = btd.HandleRedeem(conn, request, wrapped.Host, wrapped.Path, c.key)
+		err = btd.HandleRedeem(conn, request, wrapped.Host, wrapped.Path, c.redeemKeys)
 		if err != nil {
 			metrics.CounterRedeemError.Inc()
 			conn.Write([]byte(err.Error())) // anything other than "success" counts as a VERIFY_ERROR
@@ -126,25 +129,38 @@ func (c *Server) handle(conn *net.TCPConn) error {
 	}
 }
 
-// loadKeys loads keys from the configured location
+// loadKeys loads a signing key and optionally loads a file containing old keys for redemption validation
 func (c *Server) loadKeys() error {
-	if c.KeyFilePath == "" {
+	if c.SignKeyFilePath == "" {
 		return ErrEmptyKeyPath
 	} else if c.CommFilePath == "" {
 		return ErrEmptyCommPath
 	}
 
-	_, key, err := crypto.ParseKeyFile(c.KeyFilePath)
+	// Parse current signing key
+	_, currkey, err := crypto.ParseKeyFile(c.SignKeyFilePath, true)
 	if err != nil {
 		return err
 	}
-	c.key = key
+	c.signKey = currkey[0]
+	c.redeemKeys = append(c.redeemKeys, c.signKey)
+
+	// optinally parse old keys that are valid for redemption
+	if c.RedeemKeysFilePath != "" {
+		_, oldKeys, err := crypto.ParseKeyFile(c.RedeemKeysFilePath, false)
+		if err != nil {
+			return err
+		}
+		c.redeemKeys = append(c.redeemKeys, oldKeys...)
+	} else {
+		errLog.Println("No other keys provided for redeeming older tokens.")
+	}
 
 	return nil
 }
 
 func (c *Server) ListenAndServe() error {
-	if c.key == nil {
+	if len(c.signKey) == 0 {
 		return ErrNoSecretKey
 	}
 
@@ -217,7 +233,8 @@ func main() {
 
 	flag.StringVar(&configFile, "config", "", "local config file for development (overrides cli options)")
 	flag.StringVar(&srv.BindAddress, "addr", "127.0.0.1", "address to listen on")
-	flag.StringVar(&srv.KeyFilePath, "key", "", "path to the secret key file")
+	flag.StringVar(&srv.SignKeyFilePath, "sign_key", "", "path to the current secret key file for signing tokens")
+	flag.StringVar(&srv.RedeemKeysFilePath, "redeem_keys", "", "(optional) path to the file containing all other keys that are still used for validating redemptions")
 	flag.StringVar(&srv.CommFilePath, "comm", "", "path to the commitment file")
 	flag.IntVar(&srv.ListenPort, "p", 2416, "port to listen on")
 	flag.IntVar(&srv.MetricsPort, "m", 2417, "metrics port")
@@ -232,7 +249,7 @@ func main() {
 		}
 	}
 
-	if configFile == "" && (srv.KeyFilePath == "" || srv.CommFilePath == "") {
+	if configFile == "" && (srv.SignKeyFilePath == "" || srv.CommFilePath == "") {
 		flag.Usage()
 		return
 	}
@@ -251,7 +268,8 @@ func main() {
 	}
 
 	// Retrieve the actual elliptic curve points for the commitment
-	srv.G, srv.H, err = crypto.RetrieveCommPoints(GBytes, HBytes, srv.key)
+	// The commitment should match the current key that is being used for signing
+	srv.G, srv.H, err = crypto.RetrieveCommPoints(GBytes, HBytes, srv.signKey)
 	if err != nil {
 		errLog.Fatal(err)
 		return

@@ -74,9 +74,11 @@ func ApproveTokens(req BlindTokenRequest, key []byte, G, H *crypto.Point) ([][]b
 }
 
 // RedeemToken checks a redemption request against the observed request data
-// and MAC. It also checks for double-spend. Returns nil on success and an
+// and MAC according a set of keys. keys keeps a set of private keys that
+// are ever used to sign the token so we can rotate private key easily
+// It also checks for double-spend. Returns nil on success and an
 // error on failure.
-func RedeemToken(req BlindTokenRequest, host, path, key []byte) error {
+func RedeemToken(req BlindTokenRequest, host, path []byte, keys [][]byte) error {
 	// XXX: hardcoded curve assumption
 	curve := elliptic.P256()
 	hash := stdcrypto.SHA256
@@ -86,11 +88,19 @@ func RedeemToken(req BlindTokenRequest, host, path, key []byte) error {
 	if err != nil {
 		return err
 	}
-	sharedPoint := crypto.SignPoint(T, key)
-	sharedKey := crypto.DeriveKey(hash, sharedPoint, token)
-
 	requestData := [][]byte{host, path}
-	valid := crypto.CheckRequestBinding(hash, sharedKey, requestBinder, requestData)
+
+	var valid bool
+	for _, key := range keys {
+		sharedPoint := crypto.SignPoint(T, key)
+		sharedKey := crypto.DeriveKey(hash, sharedPoint, token)
+
+		valid = crypto.CheckRequestBinding(hash, sharedKey, requestBinder, requestData)
+
+		if valid {
+			break
+		}
+	}
 
 	if !valid {
 		metrics.CounterRedeemErrorVerify.Inc()
@@ -157,7 +167,7 @@ func HandleIssue(conn *net.TCPConn, req BlindTokenRequest, key []byte, G, H *cry
 // "success" back to the supplied connection and add the token preimage to a
 // double-spend ledger. Internal semantics are still return nil on success,
 // caller closes the connection.
-func HandleRedeem(conn *net.TCPConn, req BlindTokenRequest, host, path string, key []byte) error {
+func HandleRedeem(conn *net.TCPConn, req BlindTokenRequest, host, path string, keys [][]byte) error {
 	if req.Type != REDEEM {
 		metrics.CounterRedeemErrorFormat.Inc()
 		return ErrUnexpectedRequestType
@@ -173,7 +183,7 @@ func HandleRedeem(conn *net.TCPConn, req BlindTokenRequest, host, path string, k
 
 	// transform request data here if necessary
 
-	err := RedeemToken(req, []byte(host), []byte(path), key)
+	err := RedeemToken(req, []byte(host), []byte(path), keys)
 	if err != nil {
 		return err
 	}
