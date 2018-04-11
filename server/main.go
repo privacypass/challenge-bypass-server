@@ -144,7 +144,7 @@ func (c *Server) loadKeys() error {
 	c.signKey = currkey[0]
 	c.redeemKeys = append(c.redeemKeys, c.signKey)
 
-	// optinally parse old keys that are valid for redemption
+	// optionally parse old keys that are valid for redemption
 	if c.RedeemKeysFilePath != "" {
 		_, oldKeys, err := crypto.ParseKeyFile(c.RedeemKeysFilePath, false)
 		if err != nil {
