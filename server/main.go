@@ -38,7 +38,7 @@ type Server struct {
 	ListenPort         int    `json:"listen_port,omitempty"`
 	MetricsPort        int    `json:"metrics_port,omitempty"`
 	MaxTokens          int    `json:"max_tokens,omitempty"`
-	SignKeyFilePath    string `json:"sign_key_file_path"`
+	SignKeyFilePath    string `json:"key_file_path"`
 	RedeemKeysFilePath string `json:"redeem_keys_file_path"`
 	CommFilePath       string `json:"comm_file_path"`
 
@@ -232,7 +232,7 @@ func main() {
 
 	flag.StringVar(&configFile, "config", "", "local config file for development (overrides cli options)")
 	flag.StringVar(&srv.BindAddress, "addr", "127.0.0.1", "address to listen on")
-	flag.StringVar(&srv.SignKeyFilePath, "sign_key", "", "path to the current secret key file for signing tokens")
+	flag.StringVar(&srv.SignKeyFilePath, "key", "", "path to the current secret key file for signing tokens")
 	flag.StringVar(&srv.RedeemKeysFilePath, "redeem_keys", "", "(optional) path to the file containing all other keys that are still used for validating redemptions")
 	flag.StringVar(&srv.CommFilePath, "comm", "", "path to the commitment file")
 	flag.IntVar(&srv.ListenPort, "p", 2416, "port to listen on")
