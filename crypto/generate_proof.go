@@ -28,11 +28,17 @@ func main() {
 		return
 	}
 
-	curve, key, err := crypto.ParseKeyFile(keyFile)
+	curves, keys, err := crypto.ParseKeyFile(keyFile)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
+
+	if len(curves) == 0 || len(keys) == 0 {
+		fmt.Println("failed to parse keys in the key file")
+	}
+	curve := curves[0]
+	key := keys[0]
 
 	_, G, err := crypto.NewRandomPoint(curve)
 	if err != nil {

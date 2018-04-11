@@ -25,9 +25,17 @@ To run the server:
 
 `go run server/main.go --key testdata/p256-key.pem --comm testdata/test-p256-commitment`
 
+here, `key` is the current secret key used for signing, `comm` is the public commitment to the signing key.
+
 To demo token issuance:
 
 `cat testdata/bl_sig_req | nc localhost 2416`
+
+Keys that are only valid for verifying token redemptions can be provided in a single `.pem` file. For example, using:
+
+`--redeem_keys testdata/p256-redeem-keys.pem`
+
+the signing key, is automatically also used for redemption.
 
 For a full client implementation, and further details on required message formatting and technical considerations, see the [browser extension](https://github.com/privacypass/challenge-bypass-extension).
 

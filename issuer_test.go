@@ -43,69 +43,57 @@ func makeTokenIssueRequest() (*BlindTokenRequest, [][]byte, []*crypto.Point, [][
 	return request, tokens, bP, bF, nil
 }
 
-func makeTokenRedempRequest() (*BlindTokenRequest, []byte, error) {
+func makeTokenRedempRequest(x []byte, G, H *crypto.Point) (*BlindTokenRequest, error) {
 	// Client
 	request, tokens, bP, bF, err := makeTokenIssueRequest()
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	// Client -> (request) -> Server
 
 	// Server
-	// 2a. Have secret key
-	x, _, _, err := elliptic.GenerateKey(elliptic.P256(), crand.Reader)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	// 2b. generate commitment
-	G, H, err := fakeCommitments(x)
-	if err != nil {
-		return nil, nil, errors.New("couldn't even fake the commitments")
-	}
-
-	// 2c. Sign the blind points
+	// Sign the blind points (x is the signing key)
 	marshaledData, err := ApproveTokens(*request, x, G, H)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	// Client <- (signed blind tokens) <- Server
 
 	// Client
-	// 3a. Umarshal signed+blinded points
+	// a. Umarshal signed+blinded points
 	// XXX: hardcoded curve assumption
 	curve := elliptic.P256()
 	hash := stdcrypto.SHA256
 	marshaledPoints, marshaledBP := crypto.GetMarshaledPointsAndDleq(marshaledData)
 	xbP, err := crypto.BatchUnmarshalPoints(curve, marshaledPoints)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
-	// 3b. Unmarshal and verify batch proof
+	// b. Unmarshal and verify batch proof
 	// We need to re-sign all the tokens and re-compute
 	dleq, err := crypto.UnmarshalBatchProof(curve, marshaledBP)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	dleq.G = G
 	dleq.H = H
 	Q := signTokens(bP, x)
 	dleq.M, dleq.Z, err = recomputeComposites(G, H, bP, Q, hash, curve)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	if !dleq.Verify() {
-		return nil, nil, errors.New("Batch proof failed to verify")
+		return nil, errors.New("Batch proof failed to verify")
 	}
 
-	// 3c. Unblind a point
+	// c. Unblind a point
 	xT := crypto.UnblindPoint(xbP[0], bF[0])
-	// 3d. Derive MAC key
+	// d. Derive MAC key
 	sk := crypto.DeriveKey(hash, xT, tokens[0])
-	// 3e. MAC the request binding data
+	// e. MAC the request binding data
 	reqData := [][]byte{testHost, testPath}
 	reqBinder := crypto.CreateRequestBinding(hash, sk, reqData)
 
@@ -114,7 +102,7 @@ func makeTokenRedempRequest() (*BlindTokenRequest, []byte, error) {
 		Contents: [][]byte{tokens[0], reqBinder},
 	}
 
-	return redeemRequest, x, nil
+	return redeemRequest, nil
 }
 
 // Recompute composite values for DLEQ proof
@@ -164,6 +152,7 @@ func fakeIssueRequest() ([]byte, []*crypto.Point, error) {
 	return m, P, nil
 }
 
+// Fakes the sampling of a signing key
 func fakeSigningKey() ([]byte, error) {
 	k, _, _, err := elliptic.GenerateKey(elliptic.P256(), crand.Reader)
 	if err != nil {
@@ -172,6 +161,7 @@ func fakeSigningKey() ([]byte, error) {
 	return k, nil
 }
 
+// Fakes the procedure of producing commitments for a signing key
 func fakeCommitments(key []byte) (*crypto.Point, *crypto.Point, error) {
 	curve := elliptic.P256()
 	_, Gx, Gy, err := elliptic.GenerateKey(curve, crand.Reader)
@@ -184,6 +174,21 @@ func fakeCommitments(key []byte) (*crypto.Point, *crypto.Point, error) {
 	H := &crypto.Point{Curve: curve, X: Hx, Y: Hy}
 
 	return G, H, nil
+}
+
+// Combines the above two methods
+func fakeKeyAndCommitments() ([]byte, *crypto.Point, *crypto.Point, error) {
+	x, err := fakeSigningKey()
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	G, H, err := fakeCommitments(x)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	return x, G, H, nil
 }
 
 func TestParseWrappedRequest(t *testing.T) {
@@ -225,14 +230,9 @@ func TestTokenIssuance(t *testing.T) {
 		t.Fatalf("got issue request with type %s", req.Type)
 	}
 
-	key, err := fakeSigningKey()
+	key, G, H, err := fakeKeyAndCommitments()
 	if err != nil {
-		t.Fatal("couldn't even fake a key")
-	}
-
-	G, H, err := fakeCommitments(key)
-	if err != nil {
-		t.Fatal("couldn't even fake the commitments")
+		t.Fatal("couldn't fake the keys and commitments")
 	}
 
 	marshaledResp, err := ApproveTokens(req, key, G, H)
@@ -259,30 +259,69 @@ func TestTokenIssuance(t *testing.T) {
 	}
 }
 
+// Tests token redemption for multiple keys
 func TestTokenRedemption(t *testing.T) {
-	// Client -> (tokens[0], requestBinder) -> Server
-	blRedempreq, x, err := makeTokenRedempRequest()
+	x1, G1, H1, err := fakeKeyAndCommitments()
+	if err != nil {
+		t.Fatal(err)
+	}
+	x2, G2, H2, err := fakeKeyAndCommitments()
+	if err != nil {
+		t.Fatal(err)
+	}
+	x3, G3, H3, err := fakeKeyAndCommitments()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Server
-	// Check valid token redemption
-	err = RedeemToken(*blRedempreq, testHost, testPath, x)
+	// Redemption requests for all three keys
+	blRedempreq1, err := makeTokenRedempRequest(x1, G1, H1)
 	if err != nil {
 		t.Fatal(err)
+	}
+	blRedempreq2, err := makeTokenRedempRequest(x2, G2, H2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	blRedempreq3, err := makeTokenRedempRequest(x3, G3, H3)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Only add two keys to check that the third redemption fails
+	redeemKeys := [][]byte{x1, x2}
+
+	// Server
+	// Check valid token redemption
+	err = RedeemToken(*blRedempreq1, testHost, testPath, redeemKeys)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = RedeemToken(*blRedempreq2, testHost, testPath, redeemKeys)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Check failed redemption
+	err = RedeemToken(*blRedempreq3, testHost, testPath, redeemKeys)
+	if err == nil {
+		t.Fatal("This redemption should not be verified correctly.")
 	}
 }
 
 func TestBadMAC(t *testing.T) {
-	blRedempreq, x, err := makeTokenRedempRequest()
+	x, G, H, err := fakeKeyAndCommitments()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	blRedempreq, err := makeTokenRedempRequest(x, G, H)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Server
 	// Check bad token redemption
-	err = RedeemToken(*blRedempreq, []byte("something bad"), []byte("something worse"), x)
+	err = RedeemToken(*blRedempreq, []byte("something bad"), []byte("something worse"), [][]byte{x})
 	if err == nil {
 		t.Fatal("No error occurred even though MAC should be bad")
 	}
