@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	b64 "encoding/base64"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -10,13 +11,20 @@ import (
 	"io/ioutil"
 	"log"
 	"net"
+	"net/http"
 	"os"
 	"time"
 
-	"github.com/privacypass/challenge-bypass-server"
-	"github.com/privacypass/challenge-bypass-server/crypto"
-	"github.com/privacypass/challenge-bypass-server/metrics"
+	"github.com/brave-intl/challenge-bypass-server"
+	"github.com/brave-intl/challenge-bypass-server/crypto"
+	"github.com/gorilla/mux"
 )
+
+type RegistrarResponse struct {
+	Name string `json:"name"`
+	G    string `json:"G"`
+	H    string `json:"H"`
+}
 
 var (
 	Version         = "dev"
@@ -36,7 +44,6 @@ var (
 type Server struct {
 	BindAddress        string `json:"bind_address,omitempty"`
 	ListenPort         int    `json:"listen_port,omitempty"`
-	MetricsPort        int    `json:"metrics_port,omitempty"`
 	MaxTokens          int    `json:"max_tokens,omitempty"`
 	SignKeyFilePath    string `json:"key_file_path"`
 	RedeemKeysFilePath string `json:"redeem_keys_file_path"`
@@ -46,12 +53,14 @@ type Server struct {
 	redeemKeys [][]byte      // current signing key + all old keys
 	G          *crypto.Point // elliptic curve point representation of generator G
 	H          *crypto.Point // elliptic curve point representation of commitment H to keys[0]
+
+	GBytes []byte
+	HBytes []byte
 }
 
 var DefaultServer = &Server{
 	BindAddress: "127.0.0.1",
 	ListenPort:  2416,
-	MetricsPort: 2417,
 	MaxTokens:   100,
 }
 
@@ -70,7 +79,6 @@ func loadConfigFile(filePath string) (Server, error) {
 
 // return nil to exit without complaint, caller closes
 func (c *Server) handle(conn *net.TCPConn) error {
-	metrics.CounterConnections.Inc()
 
 	// This is directly in the user's path, an overly slow connection should just fail
 	conn.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
@@ -84,7 +92,6 @@ func (c *Server) handle(conn *net.TCPConn) error {
 		if opErr, ok := err.(*net.OpError); ok && opErr.Err.Error() == "i/o timeout" && buf.Len() > 0 {
 			// then probably we just hit the read deadline, so try to unwrap anyway
 		} else {
-			metrics.CounterConnErrors.Inc()
 			return err
 		}
 	}
@@ -94,36 +101,29 @@ func (c *Server) handle(conn *net.TCPConn) error {
 
 	err = json.Unmarshal(buf.Bytes(), &wrapped)
 	if err != nil {
-		metrics.CounterJsonError.Inc()
 		return err
 	}
 	err = json.Unmarshal(wrapped.Request, &request)
 	if err != nil {
-		metrics.CounterJsonError.Inc()
 		return err
 	}
 
 	switch request.Type {
 	case btd.ISSUE:
-		metrics.CounterIssueTotal.Inc()
 		err = btd.HandleIssue(conn, request, c.signKey, c.G, c.H, c.MaxTokens)
 		if err != nil {
-			metrics.CounterIssueError.Inc()
 			return err
 		}
 		return nil
 	case btd.REDEEM:
-		metrics.CounterRedeemTotal.Inc()
 		err = btd.HandleRedeem(conn, request, wrapped.Host, wrapped.Path, c.redeemKeys)
 		if err != nil {
-			metrics.CounterRedeemError.Inc()
 			conn.Write([]byte(err.Error())) // anything other than "success" counts as a VERIFY_ERROR
 			return err
 		}
 		return nil
 	default:
 		errLog.Printf("unrecognized request type \"%s\"", request.Type)
-		metrics.CounterUnknownRequestType.Inc()
 		return ErrUnrecognizedRequest
 	}
 }
@@ -158,71 +158,65 @@ func (c *Server) loadKeys() error {
 	return nil
 }
 
+func (c *Server) registrarHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+
+	json.NewEncoder(w).Encode(RegistrarResponse{vars["type"], b64.StdEncoding.EncodeToString(c.GBytes), b64.StdEncoding.EncodeToString(c.HBytes)})
+}
+
+func (c *Server) blindedTokenIssuerHandler(w http.ResponseWriter, r *http.Request) {
+	var request btd.BlindTokenRequest
+
+	err := json.NewDecoder(r.Body).Decode(&request)
+	if err != nil {
+		http.Error(w, err.Error(), 400)
+		return
+	}
+
+	marshaledTokenList, err := btd.ApproveTokens(request, c.signKey, c.G, c.H)
+
+	if err != nil {
+		http.Error(w, err.Error(), 400)
+	}
+
+	// EncodeByteArrays encodes the [][]byte as JSON
+	jsonTokenList, err := btd.EncodeByteArrays(marshaledTokenList)
+	if err != nil {
+		http.Error(w, err.Error(), 400)
+	}
+
+	w.Write(jsonTokenList)
+}
+
+func (c *Server) blindedTokenRedeemHandler(w http.ResponseWriter, r *http.Request) {
+	var request btd.BlindTokenRequest
+
+	err := json.NewDecoder(r.Body).Decode(&request)
+	if err != nil {
+		http.Error(w, err.Error(), 400)
+		return
+	}
+
+	err = btd.RedeemToken(request, []byte{}, []byte{}, c.redeemKeys)
+	if err != nil {
+		http.Error(w, err.Error(), 400)
+	}
+}
+
 func (c *Server) ListenAndServe() error {
 	if len(c.signKey) == 0 {
 		return ErrNoSecretKey
 	}
 
 	addr := fmt.Sprintf("%s:%d", c.BindAddress, c.ListenPort)
-	tcpAddr, err := net.ResolveTCPAddr("tcp", addr)
-	if err != nil {
-		return err
-	}
-	listener, err := net.ListenTCP("tcp", tcpAddr)
-	if err != nil {
-		return err
-	}
-	defer listener.Close()
-	errLog.Printf("blindsigmgmt starting, version: %v", Version)
-	errLog.Printf("listening on %s", addr)
 
-	// Initialize prometheus endpoint
-	metricsAddr := fmt.Sprintf("%s:%d", c.BindAddress, c.MetricsPort)
-	go func() {
-		metrics.RegisterAndListen(metricsAddr, errLog)
-	}()
+	router := mux.NewRouter()
+	router.HandleFunc("/v1/registrar/{type}/", c.registrarHandler).Methods("GET")
+	router.HandleFunc("/v1/blindedToken/{type}/", c.blindedTokenIssuerHandler).Methods("POST")
+	router.HandleFunc("/v1/blindedToken/{type}/{tokenId}/", c.blindedTokenRedeemHandler).Methods("POST")
 
-	// Log errors without killing the entire server
-	errorChannel := make(chan error)
-	go func() {
-		for err := range errorChannel {
-			if err == nil {
-				continue
-			}
-			errLog.Printf("%v", err)
-		}
-	}()
-
-	// how long to wait for temporary net errors
-	backoffDelay := 1 * time.Millisecond
-
-	for {
-		tcpConn, err := listener.AcceptTCP()
-		if err != nil {
-			if netErr, ok := err.(net.Error); ok {
-				if netErr.Temporary() {
-					// let's wait
-					if backoffDelay > maxBackoffDelay {
-						backoffDelay = maxBackoffDelay
-					}
-					time.Sleep(backoffDelay)
-					backoffDelay = 2 * backoffDelay
-				}
-			}
-			metrics.CounterConnErrors.Inc()
-			errorChannel <- err
-			continue
-		}
-
-		backoffDelay = 1 * time.Millisecond
-		tcpConn.SetKeepAlive(true)
-		tcpConn.SetKeepAlivePeriod(1 * time.Minute)
-
-		go func() {
-			errorChannel <- c.handle(tcpConn)
-			tcpConn.Close()
-		}()
-	}
+	err := http.ListenAndServe(addr, router)
+	return err
 }
 
 func main() {
@@ -236,7 +230,6 @@ func main() {
 	flag.StringVar(&srv.RedeemKeysFilePath, "redeem_keys", "", "(optional) path to the file containing all other keys that are still used for validating redemptions")
 	flag.StringVar(&srv.CommFilePath, "comm", "", "path to the commitment file")
 	flag.IntVar(&srv.ListenPort, "p", 2416, "port to listen on")
-	flag.IntVar(&srv.MetricsPort, "m", 2417, "metrics port")
 	flag.IntVar(&srv.MaxTokens, "maxtokens", 100, "maximum number of tokens issued per request")
 	flag.Parse()
 
@@ -265,6 +258,9 @@ func main() {
 		errLog.Fatal(err)
 		return
 	}
+
+	srv.GBytes = GBytes
+	srv.HBytes = HBytes
 
 	// Retrieve the actual elliptic curve points for the commitment
 	// The commitment should match the current key that is being used for signing
