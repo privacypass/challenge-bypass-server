@@ -197,10 +197,11 @@ func (c *Server) blindedTokenRedeemHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	err = btd.RedeemToken(request, []byte{}, []byte{}, c.redeemKeys)
+	err = btd.RedeemToken(request, []byte("somehost"), []byte("somepath"), c.redeemKeys)
 	if err != nil {
 		http.Error(w, err.Error(), 400)
 	}
+	log.Println("Redeemed")
 }
 
 func (c *Server) ListenAndServe() error {
