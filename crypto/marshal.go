@@ -18,6 +18,15 @@ func ParseKeyFile(keyFilePath string, signingKey bool) ([]elliptic.Curve, [][]by
 	if err != nil {
 		return nil, nil, err
 	}
+
+	return parseKeyBytes(encodedKey, signingKey)
+}
+
+func ParseKeyString(key string, signingKey bool) ([]elliptic.Curve, [][]byte, error) {
+	return parseKeyBytes([]byte(key), signingKey)
+}
+
+func parseKeyBytes(encodedKey []byte, signingKey bool) ([]elliptic.Curve, [][]byte, error) {
 	var skippedTypes []string
 	var block *pem.Block
 	var curves []elliptic.Curve

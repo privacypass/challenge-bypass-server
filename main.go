@@ -35,7 +35,8 @@ var (
 	errLog          *log.Logger = log.New(os.Stderr, "[btd] ", log.LstdFlags|log.Lshortfile)
 	ErrEmptyKeyPath             = errors.New("key file path is empty")
 	// Commitments are embedded straight into the extension for now
-	ErrEmptyCommPath = errors.New("no commitment file path specified")
+	ErrEmptyCommPath     = errors.New("no commitment file path specified")
+	ErrEmptyDbConfigPath = errors.New("no db config path specified")
 )
 
 // loadKeys loads a signing key and optionally loads a file containing old keys for redemption validation
@@ -57,6 +58,21 @@ func loadKeys(c *server.Server) error {
 	return nil
 }
 
+func loadDbConfig(c *server.Server) error {
+	if c.DbConfigPath == "" {
+		return ErrEmptyDbConfigPath
+	}
+	conf := &server.DbConfig{}
+
+	data, err := ioutil.ReadFile(c.DbConfigPath)
+	if err != nil {
+		return err
+	}
+
+	json.Unmarshal(data, conf)
+	c.LoadDbConfig(conf)
+}
+
 func main() {
 	var configFile string
 	var err error
@@ -66,6 +82,7 @@ func main() {
 	flag.StringVar(&srv.BindAddress, "addr", "127.0.0.1", "address to listen on")
 	flag.StringVar(&srv.SignKeyFilePath, "key", "", "path to the current secret key file for signing tokens")
 	flag.StringVar(&srv.RedeemKeysFilePath, "redeem_keys", "", "(optional) path to the file containing all other keys that are still used for validating redemptions")
+	flag.StringVar(&srv.DbConfigPath, "db_config", "", "path to the json file with database configuration")
 	flag.StringVar(&srv.CommFilePath, "comm", "", "path to the commitment file")
 	flag.IntVar(&srv.ListenPort, "p", 2416, "port to listen on")
 	flag.IntVar(&srv.MaxTokens, "maxtokens", 100, "maximum number of tokens issued per request")

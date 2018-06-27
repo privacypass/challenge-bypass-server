@@ -1,6 +1,7 @@
 package server
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"net/http"
@@ -27,6 +28,7 @@ type Server struct {
 	SignKeyFilePath    string `json:"key_file_path"`
 	RedeemKeysFilePath string `json:"redeem_keys_file_path"`
 	CommFilePath       string `json:"comm_file_path"`
+	DbConfigPath       string `json:"db_config_path"`
 
 	SignKey    []byte        // a big-endian marshaled big.Int representing an elliptic curve scalar for the current signing key
 	RedeemKeys [][]byte      // current signing key + all old keys
@@ -35,6 +37,9 @@ type Server struct {
 
 	GBytes []byte
 	HBytes []byte
+
+	dbConfig DbConfig
+	db       *sql.DB
 }
 
 func (c *Server) ListenAndServe() error {
