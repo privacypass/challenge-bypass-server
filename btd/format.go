@@ -4,21 +4,6 @@ import (
 	"encoding/json"
 )
 
-// This is a transport format induced by internal systems. It should be
-// irrelevant to third-party implementations.
-// { bl_sig_req : b64-encoded request from client }
-type BlindTokenRequestWrapper struct {
-	Request []byte `json:"bl_sig_req"`
-	Host    string `json:"host,omitempty"`
-	Path    string `json:"http,omitempty"`
-}
-
-// { type : (Issue|Redeem), contents : list of b64-encoded blinded points }
-type BlindTokenRequest struct {
-	Type     ReqType  `json:"type"`
-	Contents [][]byte `json:"contents"`
-}
-
 // Array of base64-encoded curve points
 type IssuedTokenResponse struct {
 	MarshaledPoints [][]byte

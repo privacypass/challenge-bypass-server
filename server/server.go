@@ -40,6 +40,7 @@ func (c *Server) ListenAndServe() error {
 	router.HandleFunc("/v1/blindedToken/{type}/{tokenId}/", c.blindedTokenRedeemHandler).Methods("POST")
 
 	c.issuersHandlers(router)
+	c.tokensHandlers(router)
 
 	err := http.ListenAndServe(addr, router)
 	return err

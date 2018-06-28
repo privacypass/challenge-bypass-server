@@ -27,10 +27,10 @@ type Issuer struct {
 }
 
 type Redemption struct {
-	IssuerType string
-	Id         string
-	Timestamp  time.Time
-	Payload    string
+	IssuerType string    `json:"issuerType"`
+	Id         string    `json:"id"`
+	Timestamp  time.Time `json:"timestamp"`
+	Payload    string    `json:"payload"`
 }
 
 var (
@@ -158,9 +158,9 @@ func (c *Server) redeemToken(issuerType, id, payload string) error {
 	return nil
 }
 
-func (c *Server) fetchRedemption(id string) (*Redemption, error) {
+func (c *Server) fetchRedemption(issuerType, id string) (*Redemption, error) {
 	rows, err := c.db.Query(
-		`SELECT id, issuerType, ts, payload FROM redemptions WHERE id = $1`, id)
+		`SELECT id, issuerType, ts, payload FROM redemptions WHERE id = $1 AND issuerType = $2`, id, issuerType)
 
 	if err != nil {
 		return nil, err

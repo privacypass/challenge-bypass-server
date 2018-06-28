@@ -57,6 +57,6 @@ func (c *Server) issuerCreateHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *Server) issuersHandlers(router *mux.Router) {
-	router.HandleFunc("/v1/issuers/{type}/", c.issuerHandler).Methods("GET")
-	router.HandleFunc("/v1/issuers/", c.issuerCreateHandler).Methods("POST")
+	router.HandleFunc("/v1/issuer/{type}/", c.issuerHandler).Methods("GET")
+	router.HandleFunc("/v1/issuer/", c.issuerCreateHandler).Methods("POST")
 }
