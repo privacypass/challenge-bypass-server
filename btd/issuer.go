@@ -3,14 +3,11 @@ package btd
 import (
 	stdcrypto "crypto"
 	"crypto/elliptic"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"math/big"
-	"net"
 
 	"github.com/brave-intl/challenge-bypass-server/crypto"
-	"github.com/brave-intl/challenge-bypass-server/metrics"
 )
 
 var (
@@ -22,11 +19,9 @@ var (
 	ErrUnexpectedRequestType     = errors.New("unexpected request type")
 	ErrInvalidBatchProof         = errors.New("New batch proof for signed tokens is invalid")
 	ErrNotOnCurve                = errors.New("One or more points not found on curve")
-
-	// XXX: this is a fairly expensive piece of init
-	SpentTokens = NewDoubleSpendList()
 )
 
+// Return nil on success, caller closes the connection.
 // ApproveTokens applies the issuer's secret key to each token in the request.
 // It returns an array of marshaled approved values along with a batch DLEQ proof.
 func ApproveTokens(req BlindTokenRequest, key []byte, G, H *crypto.Point) ([][]byte, error) {
@@ -103,92 +98,8 @@ func RedeemToken(req BlindTokenRequest, host, path []byte, keys [][]byte) error 
 	}
 
 	if !valid {
-		metrics.CounterRedeemErrorVerify.Inc()
 		return fmt.Errorf("%s, host: %s, path: %s", ErrInvalidMAC.Error(), host, path)
 	}
 
-	doubleSpent := SpentTokens.CheckToken(token)
-	if doubleSpent {
-		metrics.CounterDoubleSpend.Inc()
-		return ErrDoubleSpend
-	}
-
-	SpentTokens.AddToken(token)
-
-	return nil
-}
-
-// HandleIssue deals with token issuance requests. It receives a slice of byte
-// slices representing blinded curve points in the Contents field of a
-// BlindTokenRequest. Approval consists of multiplying each point by a "secret
-// key" that is a valid scalar for the underlying curve. After approval, it
-// encodes the new points and writes them back to the client along with a
-// batch DLEQ proof.
-// Return nil on success, caller closes the connection.
-func HandleIssue(conn *net.TCPConn, req BlindTokenRequest, key []byte, G, H *crypto.Point, maxTokens int) error {
-	if req.Type != ISSUE {
-		metrics.CounterIssueErrorFormat.Inc()
-		return ErrUnexpectedRequestType
-	}
-	tokenCount := len(req.Contents)
-	if tokenCount > maxTokens {
-		metrics.CounterIssueErrorFormat.Inc()
-		return ErrTooManyTokens
-	}
-
-	// This also includes the dleq proof now
-	marshaledTokenList, err := ApproveTokens(req, key, G, H)
-	if err != nil {
-		return err
-	}
-
-	// EncodeByteArrays encodes the [][]byte as JSON
-	jsonTokenList, err := EncodeByteArrays(marshaledTokenList)
-	if err != nil {
-		return err
-	}
-
-	// which we then wrap in another layer of base64 to avoid any transit or parsing mishaps
-	base64Envelope := make([]byte, base64.StdEncoding.EncodedLen(len(jsonTokenList)))
-	base64.StdEncoding.Encode(base64Envelope, jsonTokenList)
-
-	// write back as "[b64 blob]" since the extension expects them formatted as
-	// "signatures=[b64 blob]" in the HTTP response body
-	conn.Write(base64Envelope)
-	metrics.CounterIssueSuccess.Inc()
-	return nil
-}
-
-// HandleRedeem deals with redemption requests. The Contents field of a
-// redemption request should be a tuple of (token-preimage,
-// HMAC_{sharedKey}(request-data)), where request-data is a concatenation of
-// the other fields supplied in the request (currently Host header and the
-// requested HTTP path). On successful validation, we write the ASCII string
-// "success" back to the supplied connection and add the token preimage to a
-// double-spend ledger. Internal semantics are still return nil on success,
-// caller closes the connection.
-func HandleRedeem(conn *net.TCPConn, req BlindTokenRequest, host, path string, keys [][]byte) error {
-	if req.Type != REDEEM {
-		metrics.CounterRedeemErrorFormat.Inc()
-		return ErrUnexpectedRequestType
-	}
-	if len(req.Contents) < 2 {
-		metrics.CounterRedeemErrorFormat.Inc()
-		return ErrTooFewRedemptionArguments
-	}
-
-	if SpentTokens == nil {
-		SpentTokens = NewDoubleSpendList()
-	}
-
-	// transform request data here if necessary
-
-	err := RedeemToken(req, []byte(host), []byte(path), keys)
-	if err != nil {
-		return err
-	}
-
-	conn.Write([]byte("success"))
-	metrics.CounterRedeemSuccess.Inc()
 	return nil
 }

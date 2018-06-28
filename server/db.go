@@ -5,11 +5,10 @@ import (
 	"database/sql"
 	b64 "encoding/base64"
 	"errors"
-	//	"fmt"
-	"log"
+	"time"
 
 	"github.com/brave-intl/challenge-bypass-server/crypto"
-	_ "github.com/lib/pq"
+	"github.com/lib/pq"
 )
 
 type DbConfig struct {
@@ -27,8 +26,17 @@ type Issuer struct {
 	H *crypto.Point
 }
 
+type Redemption struct {
+	IssuerType string
+	Id         string
+	Timestamp  time.Time
+	Payload    string
+}
+
 var (
-	IssuerNotFoundError = errors.New("Issuer with the given name does not exist")
+	IssuerNotFoundError      = errors.New("Issuer with the given name does not exist")
+	DuplicateRedemptionError = errors.New("Duplicate Redemption")
+	RedemptionNotFoundError  = errors.New("Redemption with the given id does not exist")
 )
 
 func (c *Server) LoadDbConfig(config DbConfig) {
@@ -40,7 +48,6 @@ func (c *Server) initDb() {
 	db, err := sql.Open("postgres", cfg.ConnectionURI)
 
 	if err != nil {
-		log.Fatal(err)
 	}
 
 	c.db = db
@@ -59,32 +66,27 @@ func (c *Server) fetchIssuer(issuerType string) (*Issuer, error) {
 		var G, H, privateKey string
 		var issuer = &Issuer{}
 		if err := rows.Scan(&issuer.IssuerType, &G, &H, &privateKey, &issuer.MaxTokens); err != nil {
-			log.Fatal(err)
 			return nil, err
 		}
 
 		issuer.GBytes, err = b64.StdEncoding.DecodeString(G)
 		if err != nil {
-			log.Fatal(err)
 			return nil, err
 		}
 
 		issuer.HBytes, err = b64.StdEncoding.DecodeString(H)
 		if err != nil {
-			log.Fatal(err)
 			return nil, err
 		}
 
 		_, key, err := crypto.ParseKeyString(privateKey, true)
 		if err != nil {
-			log.Fatal(err)
 			return nil, err
 		}
 		issuer.PrivateKey = key[0]
 
 		issuer.G, issuer.H, err = crypto.RetrieveCommPoints(issuer.GBytes, issuer.HBytes, issuer.PrivateKey)
 		if err != nil {
-			log.Fatal(err)
 			return nil, err
 		}
 
@@ -92,7 +94,6 @@ func (c *Server) fetchIssuer(issuerType string) (*Issuer, error) {
 	}
 
 	if err := rows.Err(); err != nil {
-		log.Fatal(err)
 		return nil, err
 	}
 
@@ -140,4 +141,44 @@ func (c *Server) createIssuer(issuerType string, maxTokens int) error {
 
 	defer rows.Close()
 	return nil
+}
+
+func (c *Server) redeemToken(issuerType, id, payload string) error {
+	rows, err := c.db.Query(
+		`INSERT INTO redemptions(id, issuerType, ts, payload) VALUES ($1, $2, NOW(), $3)`, id, issuerType, payload)
+
+	if err != nil {
+		if err, ok := err.(*pq.Error); ok && err.Code == "23505" { // unique constraint violation
+			return DuplicateRedemptionError
+		}
+		return err
+	}
+
+	defer rows.Close()
+	return nil
+}
+
+func (c *Server) fetchRedemption(id string) (*Redemption, error) {
+	rows, err := c.db.Query(
+		`SELECT id, issuerType, ts, payload FROM redemptions WHERE id = $1`, id)
+
+	if err != nil {
+		return nil, err
+	}
+
+	defer rows.Close()
+
+	for rows.Next() {
+		var redemption = &Redemption{}
+		if err := rows.Scan(&redemption.Id, &redemption.IssuerType, &redemption.Timestamp, &redemption.Payload); err != nil {
+			return nil, err
+		}
+		return redemption, nil
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return nil, RedemptionNotFoundError
 }

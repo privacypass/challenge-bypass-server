@@ -11,5 +11,9 @@ create table issuers (
 
 create table redemptions (
   id text not null primary key,
+  issuerType text not null,
+  ts timestamp not null,
   payload text
 );
+
+create index redemptions_type on redemptions using hash (issuerType);
