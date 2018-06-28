@@ -13,7 +13,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/privacypass/challenge-bypass-server/crypto"
+	"github.com/brave-intl/challenge-bypass-server/crypto"
 )
 
 func main() {
@@ -28,7 +28,7 @@ func main() {
 		return
 	}
 
-	curves, keys, err := crypto.ParseKeyFile(keyFile)
+	curves, keys, err := crypto.ParseKeyFile(keyFile, true)
 	if err != nil {
 		fmt.Println(err)
 		return

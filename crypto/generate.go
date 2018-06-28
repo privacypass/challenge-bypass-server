@@ -1,29 +1,29 @@
 package crypto
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
-	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
 )
 
-func GeneratePrivateKey(bitSize int) (string, error) {
-	privateKey, err := rsa.GenerateKey(rand.Reader, bitSize)
+func GeneratePrivateKey() (string, error) {
+	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return "", err
 	}
 
-	err = privateKey.Validate()
+	privateKeyBytes, err := x509.MarshalECPrivateKey(privateKey)
+
 	if err != nil {
 		return "", err
 	}
-
-	privDER := x509.MarshalPKCS1PrivateKey(privateKey)
 
 	privBlock := pem.Block{
-		Type:    "RSA PRIVATE KEY",
+		Type:    "EC PRIVATE KEY",
 		Headers: nil,
-		Bytes:   privDER,
+		Bytes:   privateKeyBytes,
 	}
 
 	privatePEM := pem.EncodeToMemory(&privBlock)

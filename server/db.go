@@ -1,21 +1,19 @@
 package server
 
 import (
+	"crypto/elliptic"
 	"database/sql"
 	b64 "encoding/base64"
 	"errors"
-	"fmt"
+	//	"fmt"
 	"log"
 
 	"github.com/brave-intl/challenge-bypass-server/crypto"
+	_ "github.com/lib/pq"
 )
 
 type DbConfig struct {
-	User     string `json:"user"`
-	Password string `json:"password"`
-	Dbname   string `json:"dbname"`
-	Host     string `json:"host"`
-	Port     string `json:"port"`
+	ConnectionURI string `json:"connectionURI"`
 }
 
 type Issuer struct {
@@ -39,9 +37,7 @@ func (c *Server) LoadDbConfig(config DbConfig) {
 
 func (c *Server) initDb() {
 	cfg := c.dbConfig
-	db, err := sql.Open("postgres", fmt.Sprintf(
-		"user=%s password=%s dbname=%s host=%s port=%s",
-		cfg.User, cfg.Password, cfg.Dbname, cfg.Host, cfg.Port))
+	db, err := sql.Open("postgres", cfg.ConnectionURI)
 
 	if err != nil {
 		log.Fatal(err)
@@ -52,7 +48,11 @@ func (c *Server) initDb() {
 
 func (c *Server) fetchIssuer(issuerType string) (*Issuer, error) {
 	rows, err := c.db.Query(
-		`SELECT issuerType, G, H, privateKey, maxTokens FROM issuers WHERE issuerType=?`, issuerType)
+		`SELECT issuerType, G, H, privateKey, maxTokens FROM issuers WHERE issuerType=$1`, issuerType)
+	if err != nil {
+		return nil, err
+	}
+
 	defer rows.Close()
 
 	for rows.Next() {
@@ -104,7 +104,7 @@ func (c *Server) createIssuer(issuerType string, maxTokens int) error {
 		maxTokens = 40
 	}
 
-	privateKey, err := crypto.GeneratePrivateKey(4096)
+	privateKey, err := crypto.GeneratePrivateKey()
 	if err != nil {
 		return err
 	}
@@ -129,11 +129,15 @@ func (c *Server) createIssuer(issuerType string, maxTokens int) error {
 		return err
 	}
 
-	Gstr := b64.StdEncoding.EncodeToString(G)
-	Hstr := b64.StdEncoding.EncodeToString(H)
+	Gstr := b64.StdEncoding.EncodeToString(elliptic.Marshal(G.Curve, G.X, G.Y))
+	Hstr := b64.StdEncoding.EncodeToString(elliptic.Marshal(H.Curve, H.X, H.Y))
 
 	rows, err := c.db.Query(
 		`INSERT INTO issuers(issuerType, G, H, privateKey, maxTokens) VALUES ($1, $2, $3, $4, $5)`, issuerType, Gstr, Hstr, privateKey, maxTokens)
+	if err != nil {
+		return err
+	}
+
 	defer rows.Close()
-	return err
+	return nil
 }
