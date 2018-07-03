@@ -36,8 +36,7 @@ Run `go build main.go` to make a binary.
 
 To run unit-tests run `test.sh`.
 
-
-~~~
+---
 
 # Challenge Bypass Server
 
