@@ -28,6 +28,7 @@ type Server struct {
 
 	dbConfig DbConfig
 	db       *sql.DB
+	caches   map[string]CacheInterface
 }
 
 func (c *Server) ListenAndServe() error {

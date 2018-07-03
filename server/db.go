@@ -5,14 +5,23 @@ import (
 	"database/sql"
 	b64 "encoding/base64"
 	"errors"
+	"fmt"
+	"log"
 	"time"
 
 	"github.com/brave-intl/challenge-bypass-server/crypto"
 	"github.com/lib/pq"
+	"github.com/patrickmn/go-cache"
 )
 
+type CachingConfig struct {
+	Enabled       bool `json:"enabled"`
+	ExpirationSec int  `json:"expirationSec"`
+}
+
 type DbConfig struct {
-	ConnectionURI string `json:"connectionURI"`
+	ConnectionURI string        `json:"connectionURI"`
+	CachingConfig CachingConfig `json:"caching"`
 }
 
 type Issuer struct {
@@ -33,6 +42,11 @@ type Redemption struct {
 	Payload    string    `json:"payload"`
 }
 
+type CacheInterface interface {
+	Get(k string) (interface{}, bool)
+	SetDefault(k string, x interface{})
+}
+
 var (
 	IssuerNotFoundError      = errors.New("Issuer with the given name does not exist")
 	DuplicateRedemptionError = errors.New("Duplicate Redemption")
@@ -48,12 +62,26 @@ func (c *Server) initDb() {
 	db, err := sql.Open("postgres", cfg.ConnectionURI)
 
 	if err != nil {
+		log.Fatal(err.Error())
 	}
 
 	c.db = db
+
+	if cfg.CachingConfig.Enabled {
+		c.caches = make(map[string]CacheInterface)
+		defaultDuration := time.Duration(cfg.CachingConfig.ExpirationSec) * time.Second
+		c.caches["issuers"] = cache.New(defaultDuration, 2*defaultDuration)
+		c.caches["redemptions"] = cache.New(defaultDuration, 2*defaultDuration)
+	}
 }
 
 func (c *Server) fetchIssuer(issuerType string) (*Issuer, error) {
+	if c.caches != nil {
+		if cached, found := c.caches["issuers"].Get(issuerType); found {
+			return cached.(*Issuer), nil
+		}
+	}
+
 	rows, err := c.db.Query(
 		`SELECT issuerType, G, H, privateKey, maxTokens FROM issuers WHERE issuerType=$1`, issuerType)
 	if err != nil {
@@ -88,6 +116,10 @@ func (c *Server) fetchIssuer(issuerType string) (*Issuer, error) {
 		issuer.G, issuer.H, err = crypto.RetrieveCommPoints(issuer.GBytes, issuer.HBytes, issuer.PrivateKey)
 		if err != nil {
 			return nil, err
+		}
+
+		if c.caches != nil {
+			c.caches["issuers"].SetDefault(issuerType, issuer)
 		}
 
 		return issuer, nil
@@ -159,6 +191,12 @@ func (c *Server) redeemToken(issuerType, id, payload string) error {
 }
 
 func (c *Server) fetchRedemption(issuerType, id string) (*Redemption, error) {
+	if c.caches != nil {
+		if cached, found := c.caches["redemptions"].Get(fmt.Sprintf("%s:%s", issuerType, id)); found {
+			return cached.(*Redemption), nil
+		}
+	}
+
 	rows, err := c.db.Query(
 		`SELECT id, issuerType, ts, payload FROM redemptions WHERE id = $1 AND issuerType = $2`, id, issuerType)
 
@@ -173,6 +211,11 @@ func (c *Server) fetchRedemption(issuerType, id string) (*Redemption, error) {
 		if err := rows.Scan(&redemption.Id, &redemption.IssuerType, &redemption.Timestamp, &redemption.Payload); err != nil {
 			return nil, err
 		}
+
+		if c.caches != nil {
+			c.caches["redemptions"].SetDefault(fmt.Sprintf("%s:%s", issuerType, id), redemption)
+		}
+
 		return redemption, nil
 	}
 

@@ -5,6 +5,7 @@ This is a fork of the Challenge Bypass Server, that implements the HTTP REST int
 ## Dependencies
 
 ```bash
+go get github.com/lib/pq
 go get github.com/gorilla/mux
 go get github.com/patrickmn/go-cache
 ```

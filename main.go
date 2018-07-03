@@ -14,7 +14,6 @@ import (
 var DefaultServer = &server.Server{
 	BindAddress: "127.0.0.1",
 	ListenPort:  2416,
-	MaxTokens:   100,
 }
 
 func loadConfigFile(filePath string) (server.Server, error) {
@@ -61,7 +60,6 @@ func main() {
 	flag.StringVar(&srv.BindAddress, "addr", "127.0.0.1", "address to listen on")
 	flag.StringVar(&srv.DbConfigPath, "db_config", "", "path to the json file with database configuration")
 	flag.IntVar(&srv.ListenPort, "p", 2416, "port to listen on")
-	flag.IntVar(&srv.MaxTokens, "maxtokens", 100, "maximum number of tokens issued per request")
 	flag.Parse()
 
 	if configFile != "" {
@@ -72,7 +70,11 @@ func main() {
 		}
 	}
 
-	loadDbConfig(&srv)
+	err = loadDbConfig(&srv)
+	if err != nil {
+		errLog.Fatal(err)
+	}
+
 	err = srv.ListenAndServe()
 
 	if err != nil {

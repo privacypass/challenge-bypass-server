@@ -1,3 +1,7 @@
 {
-  "connectionURI": "postgresql://localhost/btokens?sslmode=disable"
+  "connectionURI": "postgresql://localhost/btokens?sslmode=disable",
+  "caching": {
+    "enabled": true,
+    "expirationSec": 60
+  }
 }
