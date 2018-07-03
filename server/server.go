@@ -37,9 +37,6 @@ func (c *Server) ListenAndServe() error {
 	addr := fmt.Sprintf("%s:%d", c.BindAddress, c.ListenPort)
 
 	router := mux.NewRouter()
-	router.HandleFunc("/v1/blindedToken/{type}/", c.blindedTokenIssuerHandler).Methods("POST")
-	router.HandleFunc("/v1/blindedToken/{type}/{tokenId}/", c.blindedTokenRedeemHandler).Methods("POST")
-
 	c.issuersHandlers(router)
 	c.tokensHandlers(router)
 
