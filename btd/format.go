@@ -27,8 +27,3 @@ func DecodeByteArrays(encoded []byte) ([][]byte, error) {
 	err := json.Unmarshal(encoded, &values)
 	return values, err
 }
-
-func MarshalRequest(request interface{}) ([]byte, error) {
-	jsonRequest, err := json.Marshal(request)
-	return jsonRequest, err
-}

@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/privacypass/challenge-bypass-server/crypto"
+	"github.com/brave-intl/challenge-bypass-server/crypto"
 )
 
 func TestEncodeTokenArray(t *testing.T) {

@@ -5,20 +5,18 @@ import (
 	stdcrypto "crypto"
 	"crypto/elliptic"
 	crand "crypto/rand"
-	"encoding/json"
 	"errors"
 	"testing"
 
-	"github.com/privacypass/challenge-bypass-server/crypto"
+	"github.com/brave-intl/challenge-bypass-server/crypto"
 )
 
 var (
-	testHost = []byte("example.com")
-	testPath = []byte("/index.html")
+	testPayload = []byte("Some test payload")
 )
 
 // Generates a small but well-formed ISSUE request for testing.
-func makeTokenIssueRequest() (*BlindTokenRequest, [][]byte, []*crypto.Point, [][]byte, error) {
+func makeTokenIssueRequest() ([][]byte, [][]byte, []*crypto.Point, [][]byte, error) {
 	tokens := make([][]byte, 10)
 	bF := make([][]byte, len(tokens))
 	bP := make([]*crypto.Point, len(tokens))
@@ -36,16 +34,12 @@ func makeTokenIssueRequest() (*BlindTokenRequest, [][]byte, []*crypto.Point, [][
 		return nil, nil, nil, nil, err
 	}
 
-	request := &BlindTokenRequest{
-		Type:     "Issue",
-		Contents: marshaledTokenList, // this is [][]byte, not JSON
-	}
-	return request, tokens, bP, bF, nil
+	return marshaledTokenList, tokens, bP, bF, nil
 }
 
-func makeTokenRedempRequest(x []byte, G, H *crypto.Point) (*BlindTokenRequest, error) {
+func makeTokenRedempRequest(x []byte, G, H *crypto.Point) ([][]byte, error) {
 	// Client
-	request, tokens, bP, bF, err := makeTokenIssueRequest()
+	marshaledTokenList, tokens, bP, bF, err := makeTokenIssueRequest()
 	if err != nil {
 		return nil, err
 	}
@@ -54,7 +48,7 @@ func makeTokenRedempRequest(x []byte, G, H *crypto.Point) (*BlindTokenRequest, e
 
 	// Server
 	// Sign the blind points (x is the signing key)
-	marshaledData, err := ApproveTokens(*request, x, G, H)
+	marshaledPoints, marshaledBP, err := ApproveTokens(marshaledTokenList, x, G, H)
 	if err != nil {
 		return nil, err
 	}
@@ -66,7 +60,6 @@ func makeTokenRedempRequest(x []byte, G, H *crypto.Point) (*BlindTokenRequest, e
 	// XXX: hardcoded curve assumption
 	curve := elliptic.P256()
 	hash := stdcrypto.SHA256
-	marshaledPoints, marshaledBP := crypto.GetMarshaledPointsAndDleq(marshaledData)
 	xbP, err := crypto.BatchUnmarshalPoints(curve, marshaledPoints)
 	if err != nil {
 		return nil, err
@@ -94,15 +87,10 @@ func makeTokenRedempRequest(x []byte, G, H *crypto.Point) (*BlindTokenRequest, e
 	// d. Derive MAC key
 	sk := crypto.DeriveKey(hash, xT, tokens[0])
 	// e. MAC the request binding data
-	reqData := [][]byte{testHost, testPath}
+	reqData := [][]byte{testPayload}
 	reqBinder := crypto.CreateRequestBinding(hash, sk, reqData)
 
-	redeemRequest := &BlindTokenRequest{
-		Type:     "Redeem",
-		Contents: [][]byte{tokens[0], reqBinder},
-	}
-
-	return redeemRequest, nil
+	return [][]byte{tokens[0], reqBinder}, nil
 }
 
 // Recompute composite values for DLEQ proof
@@ -120,36 +108,12 @@ func signTokens(P []*crypto.Point, key []byte) []*crypto.Point {
 	return Q
 }
 
-// This function exists only for testing. The wrapper is a transport format
-// induced by internal systems. It should be irrelevant to third-party
-// implementations.
-func wrapTokenRequest(req *BlindTokenRequest) *BlindTokenRequestWrapper {
-	encoded, _ := MarshalRequest(req)
-	wrappedRequest := &BlindTokenRequestWrapper{
-		Request: encoded,
-	}
-	return wrappedRequest
-}
-
-func fakeWrappedRequest() ([]byte, error) {
-	req, _, _, _, err := makeTokenIssueRequest()
-	if err != nil {
-		return nil, err
-	}
-	wrapped := wrapTokenRequest(req)
-	return MarshalRequest(wrapped)
-}
-
-func fakeIssueRequest() ([]byte, []*crypto.Point, error) {
-	req, _, P, _, err := makeTokenIssueRequest()
+func fakeIssueRequest() ([][]byte, []*crypto.Point, error) {
+	reqContents, _, P, _, err := makeTokenIssueRequest()
 	if err != nil {
 		return nil, nil, err
 	}
-	m, err := MarshalRequest(req)
-	if err != nil {
-		return nil, nil, err
-	}
-	return m, P, nil
+	return reqContents, P, nil
 }
 
 // Fakes the sampling of a signing key
@@ -191,43 +155,10 @@ func fakeKeyAndCommitments() ([]byte, *crypto.Point, *crypto.Point, error) {
 	return x, G, H, nil
 }
 
-func TestParseWrappedRequest(t *testing.T) {
-	reqBytes, err := fakeWrappedRequest()
-	if err != nil {
-		t.Fatalf("it's all borked")
-	}
-
-	var wrapped BlindTokenRequestWrapper
-	var request BlindTokenRequest
-
-	err = json.Unmarshal(reqBytes, &wrapped)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	err = json.Unmarshal(wrapped.Request, &request)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if request.Type != ISSUE {
-		t.Errorf("got req type %s when expected %s", request.Type, ISSUE)
-	}
-}
-
 func TestTokenIssuance(t *testing.T) {
-	reqBytes, bP, err := fakeIssueRequest()
+	reqContents, bP, err := fakeIssueRequest()
 	if err != nil {
 		t.Fatalf("it's all borked")
-	}
-
-	var req BlindTokenRequest
-	err = json.Unmarshal(reqBytes, &req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if req.Type != ISSUE {
-		t.Fatalf("got issue request with type %s", req.Type)
 	}
 
 	key, G, H, err := fakeKeyAndCommitments()
@@ -235,18 +166,17 @@ func TestTokenIssuance(t *testing.T) {
 		t.Fatal("couldn't fake the keys and commitments")
 	}
 
-	marshaledResp, err := ApproveTokens(req, key, G, H)
+	pointData, bpData, err := ApproveTokens(reqContents, key, G, H)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if bytes.Equal(marshaledResp[0], req.Contents[0]) {
+	if bytes.Equal(pointData[0], reqContents[0]) {
 		t.Fatal("approved tokens were same as submitted tokens")
 	}
 
 	// Verify DLEQ proof
-	dleqIndex := len(marshaledResp) - 1
-	dleq, err := crypto.UnmarshalBatchProof(elliptic.P256(), marshaledResp[dleqIndex])
+	dleq, err := crypto.UnmarshalBatchProof(elliptic.P256(), bpData)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -275,15 +205,15 @@ func TestTokenRedemption(t *testing.T) {
 	}
 
 	// Redemption requests for all three keys
-	blRedempreq1, err := makeTokenRedempRequest(x1, G1, H1)
+	blRedempContents1, err := makeTokenRedempRequest(x1, G1, H1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	blRedempreq2, err := makeTokenRedempRequest(x2, G2, H2)
+	blRedempContents2, err := makeTokenRedempRequest(x2, G2, H2)
 	if err != nil {
 		t.Fatal(err)
 	}
-	blRedempreq3, err := makeTokenRedempRequest(x3, G3, H3)
+	blRedempContents3, err := makeTokenRedempRequest(x3, G3, H3)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -293,16 +223,16 @@ func TestTokenRedemption(t *testing.T) {
 
 	// Server
 	// Check valid token redemption
-	err = RedeemToken(*blRedempreq1, testHost, testPath, redeemKeys)
+	err = RedeemToken(blRedempContents1, testPayload, redeemKeys)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = RedeemToken(*blRedempreq2, testHost, testPath, redeemKeys)
+	err = RedeemToken(blRedempContents2, testPayload, redeemKeys)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Check failed redemption
-	err = RedeemToken(*blRedempreq3, testHost, testPath, redeemKeys)
+	err = RedeemToken(blRedempContents3, testPayload, redeemKeys)
 	if err == nil {
 		t.Fatal("This redemption should not be verified correctly.")
 	}
@@ -314,14 +244,14 @@ func TestBadMAC(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	blRedempreq, err := makeTokenRedempRequest(x, G, H)
+	blRedempContents, err := makeTokenRedempRequest(x, G, H)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Server
 	// Check bad token redemption
-	err = RedeemToken(*blRedempreq, []byte("something bad"), []byte("something worse"), [][]byte{x})
+	err = RedeemToken(blRedempContents, []byte("bad payload"), [][]byte{x})
 	if err == nil {
 		t.Fatal("No error occurred even though MAC should be bad")
 	}
