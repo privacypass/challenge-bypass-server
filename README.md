@@ -2,6 +2,35 @@
 
 This is a fork of the Challenge Bypass Server, that implements the HTTP REST interface, persistance in Postgresql, multiple issuers, etc.
 
+## Dependencies
+
+```bash
+go get github.com/gorilla/mux
+go get github.com/patrickmn/go-cache
+```
+
+## Config
+
+There is only one config file used at the moment, `database.json`:
+
+```json
+{
+  "connectionURI": "postgresql://localhost/btokens?sslmode=disable",
+  "caching": {
+    "enabled": true,
+    "expirationSec": 60
+  }
+}
+```
+
+## Run/build
+
+Install and run Postgresql.
+
+Run `go run main.go -db_config ./testdata/database.json` to run locally.
+
+Run `go build main.go` to make a binary.
+
 ## Testing
 
 To run unit-tests run `test.sh`.
