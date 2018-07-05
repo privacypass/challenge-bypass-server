@@ -1,2 +1,4 @@
 /.GOPATH
 /bin
+_vendor*/
+vendor/
