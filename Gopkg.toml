@@ -23,7 +23,8 @@
 #   non-go = false
 #   go-tests = true
 #   unused-packages = true
-
+[metadata.heroku]
+  root-package = "github.com/brave-intl/challenge-bypass-server"
 
 [[constraint]]
   name = "github.com/gorilla/mux"
