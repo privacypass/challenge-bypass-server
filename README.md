@@ -33,6 +33,10 @@ Run `go build main.go` to make a binary.
 
 To run unit-tests run `test.sh`.
 
+## Deployment
+
+For testing purposes this repo can be deployed to Heroku. The settings set in environment variables `DBCONFIG` and `DATABASE_URL` override other options.
+
 ---
 
 # Challenge Bypass Server
