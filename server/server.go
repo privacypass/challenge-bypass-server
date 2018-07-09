@@ -21,7 +21,6 @@ var (
 )
 
 type Server struct {
-	BindAddress  string `json:"bind_address,omitempty"`
 	ListenPort   int    `json:"listen_port,omitempty"`
 	MaxTokens    int    `json:"max_tokens,omitempty"`
 	DbConfigPath string `json:"db_config_path"`
@@ -34,7 +33,7 @@ type Server struct {
 func (c *Server) ListenAndServe() error {
 	c.initDb()
 
-	addr := fmt.Sprintf("%s:%d", c.BindAddress, c.ListenPort)
+	addr := fmt.Sprintf(":%d", c.ListenPort)
 
 	router := mux.NewRouter()
 	c.issuersHandlers(router)

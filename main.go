@@ -7,13 +7,13 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"strconv"
 
 	"github.com/brave-intl/challenge-bypass-server/server"
 )
 
 var DefaultServer = &server.Server{
-	BindAddress: "127.0.0.1",
-	ListenPort:  2416,
+	ListenPort: 2416,
 }
 
 func loadConfigFile(filePath string) (server.Server, error) {
@@ -35,14 +35,21 @@ var (
 )
 
 func loadDbConfig(c *server.Server) error {
-	if c.DbConfigPath == "" {
-		return ErrEmptyDbConfigPath
-	}
 	conf := server.DbConfig{}
+	var data []byte
 
-	data, err := ioutil.ReadFile(c.DbConfigPath)
-	if err != nil {
-		return err
+	if envConfig := os.Getenv("DBCONFIG"); envConfig != "" {
+		data = []byte(envConfig)
+	} else {
+		if c.DbConfigPath == "" {
+			return ErrEmptyDbConfigPath
+		}
+
+		var err error
+		data, err = ioutil.ReadFile(c.DbConfigPath)
+		if err != nil {
+			return err
+		}
 	}
 
 	json.Unmarshal(data, &conf)
@@ -57,7 +64,6 @@ func main() {
 	srv := *DefaultServer
 
 	flag.StringVar(&configFile, "config", "", "local config file for development (overrides cli options)")
-	flag.StringVar(&srv.BindAddress, "addr", "127.0.0.1", "address to listen on")
 	flag.StringVar(&srv.DbConfigPath, "db_config", "", "path to the json file with database configuration")
 	flag.IntVar(&srv.ListenPort, "p", 2416, "port to listen on")
 	flag.Parse()
@@ -67,6 +73,12 @@ func main() {
 		if err != nil {
 			errLog.Fatal(err)
 			return
+		}
+	}
+
+	if port := os.Getenv("PORT"); port != "" {
+		if portNumber, err := strconv.Atoi(port); err == nil {
+			srv.ListenPort = portNumber
 		}
 	}
 
