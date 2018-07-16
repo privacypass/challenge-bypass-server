@@ -3,7 +3,6 @@ package server
 import (
 	b64 "encoding/base64"
 	"encoding/json"
-	"fmt"
 	"net/http"
 
 	"github.com/brave-intl/challenge-bypass-server/btd"
@@ -65,7 +64,6 @@ func (c *Server) blindedTokenIssuerHandler(w http.ResponseWriter, r *http.Reques
 func (c *Server) blindedTokenRedeemHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	issuerType := vars["type"]
-	tokenId := vars["tokenId"]
 
 	issuer := c.getIssuer(issuerType, w)
 
@@ -81,11 +79,6 @@ func (c *Server) blindedTokenRedeemHandler(w http.ResponseWriter, r *http.Reques
 	}
 
 	id := b64.StdEncoding.EncodeToString(request.Token.T)
-
-	if tokenId != id {
-		http.Error(w, fmt.Sprintf("tokenId %s does not match the POST input %s", tokenId, id), 400)
-		return
-	}
 
 	if err := btd.RedeemToken([][]byte{request.Token.T, request.Token.N}, []byte(request.Payload), [][]byte{issuer.PrivateKey}); err != nil {
 		http.Error(w, err.Error(), 400)
@@ -105,7 +98,7 @@ func (c *Server) blindedTokenRedeemHandler(w http.ResponseWriter, r *http.Reques
 func (c *Server) blindedTokenRedemptionHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	issuerType := vars["type"]
-	tokenId := vars["tokenId"]
+	tokenId := r.FormValue("tokenId")
 
 	redemption, err := c.fetchRedemption(issuerType, tokenId)
 	if err != nil {
@@ -128,6 +121,6 @@ func (c *Server) blindedTokenRedemptionHandler(w http.ResponseWriter, r *http.Re
 
 func (c *Server) tokensHandlers(router *mux.Router) {
 	router.HandleFunc("/v1/blindedToken/{type}/", c.blindedTokenIssuerHandler).Methods("POST")
-	router.HandleFunc("/v1/blindedToken/{type}/{tokenId}/", c.blindedTokenRedeemHandler).Methods("POST")
-	router.HandleFunc("/v1/blindedToken/{type}/{tokenId}/", c.blindedTokenRedemptionHandler).Methods("GET")
+	router.HandleFunc("/v1/blindedToken/{type}/redemption/", c.blindedTokenRedeemHandler).Methods("POST")
+	router.HandleFunc("/v1/blindedToken/{type}/redemption/", c.blindedTokenRedemptionHandler).Methods("GET").Queries("tokenId", "{tokenId}")
 }
