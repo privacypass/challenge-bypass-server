@@ -3,7 +3,6 @@ package crypto
 
 import (
 	"crypto"
-	"crypto/elliptic"
 	"crypto/hmac"
 	crand "crypto/rand"
 	"math/big"
@@ -65,9 +64,9 @@ func CheckRequestBinding(hash crypto.Hash, key []byte, supplied []byte, observed
 }
 
 // Creates t, T=H(t), and blinding factor r
-func CreateBlindToken() (token []byte, blindPoint *Point, blindFactor []byte, err error) {
-	curve := elliptic.P256()
-	token, T, err := NewRandomPoint(curve)
+// Turns out key generation is helpfully congruent to token generation and projection.
+func CreateBlindToken(h2cObj H2CObject) (token []byte, blindPoint *Point, blindFactor []byte, err error) {
+	token, T, err := NewRandomPoint(h2cObj)
 	if err != nil {
 		return nil, nil, nil, err
 	}

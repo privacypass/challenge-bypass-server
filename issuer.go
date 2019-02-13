@@ -1,8 +1,6 @@
 package btd
 
 import (
-	stdcrypto "crypto"
-	"crypto/elliptic"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -28,16 +26,43 @@ var (
 	SpentTokens = NewDoubleSpendList()
 )
 
+// Recovers the curve parameters that are sent by the client
+// These specify the curve, hash and h2c method that they are using.
+// If they are not specified (deprecated functionality) then we assume
+// P256-SHA256-increment
+func getClientCurveParams(contents [][]byte) (*crypto.CurveParams, error) {
+	var curveParams *crypto.CurveParams
+	var curveParamsBytes []byte
+	if len(contents) == 3 {
+		curveParamsBytes = contents[2]
+		curveParams = &crypto.CurveParams{}
+		err := json.Unmarshal(curveParamsBytes, curveParams)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		curveParams = &crypto.CurveParams{Curve: "p256", Hash: "sha256", Method: "increment"}
+	}
+
+	return curveParams, nil
+}
+
 // ApproveTokens applies the issuer's secret key to each token in the request.
 // It returns a struct of values containing:
 // 		- signed tokens
 // 		- a batched DLEQ proof
 // 		- a string determining the version of the key that is being used
 func ApproveTokens(req BlindTokenRequest, key []byte, keyVersion string, G, H *crypto.Point) (IssuedTokenResponse, error) {
-	// Unmarshal the incoming blinded points
-	// XXX: hardcoded curve assumption
 	issueResponse := IssuedTokenResponse{}
-	P, err := crypto.BatchUnmarshalPoints(elliptic.P256(), req.Contents)
+	// We only support client curve params for redemption for now
+	curveParams := &crypto.CurveParams{Curve: "p256", Hash: "sha256", Method: "increment"}
+	h2cObj, err := curveParams.GetH2CObj()
+	if err != nil {
+		return issueResponse, err
+	}
+
+	// Unmarshal the incoming blinded points
+	P, err := crypto.BatchUnmarshalPoints(h2cObj.Curve(), req.Contents)
 	if err != nil {
 		return issueResponse, err
 	}
@@ -52,7 +77,7 @@ func ApproveTokens(req BlindTokenRequest, key []byte, keyVersion string, G, H *c
 	}
 
 	// Generate batch DLEQ proof
-	bp, err := crypto.NewBatchProof(stdcrypto.SHA256, G, H, P, Q, new(big.Int).SetBytes(key))
+	bp, err := crypto.NewBatchProof(h2cObj.Hash(), G, H, P, Q, new(big.Int).SetBytes(key))
 	if err != nil {
 		return issueResponse, err
 	}
@@ -90,12 +115,18 @@ func ApproveTokens(req BlindTokenRequest, key []byte, keyVersion string, G, H *c
 // It also checks for double-spend. Returns nil on success and an
 // error on failure.
 func RedeemToken(req BlindTokenRequest, host, path []byte, keys [][]byte) error {
-	// XXX: hardcoded curve assumption
-	curve := elliptic.P256()
-	hash := stdcrypto.SHA256
-
+	// If the length is 3 then the curve parameters are provided by the client
 	token, requestBinder := req.Contents[0], req.Contents[1]
-	T, err := crypto.HashToCurve(curve, hash, token)
+	curveParams, err := getClientCurveParams(req.Contents)
+	if err != nil {
+		return err
+	}
+	h2cObj, err := curveParams.GetH2CObj()
+	if err != nil {
+		return err
+	}
+
+	T, err := h2cObj.HashToCurve(token)
 	if err != nil {
 		return err
 	}
@@ -104,10 +135,8 @@ func RedeemToken(req BlindTokenRequest, host, path []byte, keys [][]byte) error 
 	var valid bool
 	for _, key := range keys {
 		sharedPoint := crypto.SignPoint(T, key)
-		sharedKey := crypto.DeriveKey(hash, sharedPoint, token)
-
-		valid = crypto.CheckRequestBinding(hash, sharedKey, requestBinder, requestData)
-
+		sharedKey := crypto.DeriveKey(h2cObj.Hash(), sharedPoint, token)
+		valid = crypto.CheckRequestBinding(h2cObj.Hash(), sharedKey, requestBinder, requestData)
 		if valid {
 			break
 		}

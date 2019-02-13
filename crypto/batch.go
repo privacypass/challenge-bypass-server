@@ -164,7 +164,7 @@ func (b *BatchProof) MarshalForResp() ([]byte, error) {
 	return resp, nil
 }
 
-// Takes the batch proof marshaled above and unmarshals it
+// Takes the batch proof marshaled above and unmarshals it (hardcoded SHA256)
 // Can be used with either the BATCH_PROOF_RESP_STR attached or not
 func UnmarshalBatchProof(curve elliptic.Curve, data []byte) (*Proof, error) {
 	dataStr := string(data)

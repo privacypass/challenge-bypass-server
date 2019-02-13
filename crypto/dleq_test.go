@@ -1,7 +1,6 @@
 package crypto
 
 import (
-	"crypto"
 	"crypto/elliptic"
 	"crypto/rand"
 	_ "crypto/sha256"
@@ -34,8 +33,20 @@ func setup(curve elliptic.Curve) ([]byte, *Point, *Point, error) {
 	return x, G, M, nil
 }
 
+func getCurveParamsP256(t *testing.T) H2CObject {
+	curveParams := &CurveParams{Curve: "p256", Hash: "sha256", Method: "increment"}
+	h2cObj, err := curveParams.GetH2CObj()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return h2cObj
+}
+
+// Tests that a DLEQ proof over validly signed tokens always verifies correctly
 func TestValidProof(t *testing.T) {
-	curve := elliptic.P256()
+	h2cObj := getCurveParamsP256(t)
+	curve := h2cObj.Curve()
+	hash := h2cObj.Hash()
 	x, G, M, err := setup(curve)
 	if err != nil {
 		t.Fatal(err)
@@ -46,7 +57,7 @@ func TestValidProof(t *testing.T) {
 	Zx, Zy := curve.ScalarMult(M.X, M.Y, x)
 	Z := &Point{Curve: curve, X: Zx, Y: Zy}
 
-	proof, err := NewProof(crypto.SHA256, G, H, M, Z, new(big.Int).SetBytes(x))
+	proof, err := NewProof(hash, G, H, M, Z, new(big.Int).SetBytes(x))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +82,7 @@ func TestValidProof(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	proofNew.hash = crypto.SHA256
+	proofNew.hash = hash
 	proofNew.G = G
 	proofNew.H = H
 	proofNew.M = M
@@ -84,7 +95,8 @@ func TestValidProof(t *testing.T) {
 }
 
 func TestInvalidProof(t *testing.T) {
-	curve := elliptic.P256()
+	h2cObj := getCurveParamsP256(t)
+	curve := h2cObj.Curve()
 	x, G, M, err := setup(curve)
 	if err != nil {
 		t.Fatal(err)
@@ -102,7 +114,7 @@ func TestInvalidProof(t *testing.T) {
 	Zx, Zy := curve.ScalarMult(M.X, M.Y, n)
 	Z := &Point{Curve: curve, X: Zx, Y: Zy}
 
-	proof, err := NewProof(crypto.SHA256, G, H, M, Z, new(big.Int).SetBytes(x))
+	proof, err := NewProof(h2cObj.Hash(), G, H, M, Z, new(big.Int).SetBytes(x))
 	if err != nil {
 		t.Fatal(err)
 	}

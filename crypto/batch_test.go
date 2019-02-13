@@ -9,6 +9,7 @@ import (
 	"testing"
 )
 
+// Generates a valid Batch DLEQ for some choice of curve (hardcoded SHA256)
 func generateValidBatchProof(curve elliptic.Curve) (*BatchProof, error) {
 	// All public keys are going to be generators, so GenerateKey is a handy
 	// test function. However, TESTING ONLY. Maintaining the discrete log
@@ -55,7 +56,7 @@ func recomputeComposites(curve elliptic.Curve, M, Z []*Point, C [][]byte) (*Poin
 	return compositeM, compositeZ
 }
 
-func TestValidBatchProof(t *testing.T) {
+func TestValidBatchProofP256(t *testing.T) {
 	curve := elliptic.P256()
 	proof, err := generateValidBatchProof(curve)
 	if err != nil {
@@ -66,7 +67,7 @@ func TestValidBatchProof(t *testing.T) {
 	}
 }
 
-func TestInvalidBatchProof(t *testing.T) {
+func TestInvalidBatchProofP256(t *testing.T) {
 	// All public keys are going to be generators, so GenerateKey is a handy
 	// test function. However, TESTING ONLY. Maintaining the discrete log
 	// relationship breaks the token scheme.
@@ -112,7 +113,7 @@ func TestInvalidBatchProof(t *testing.T) {
 }
 
 // Test that marshaling a proof does not compromise verifiability
-func TestMarshalBatchProof(t *testing.T) {
+func TestMarshalBatchProofP256(t *testing.T) {
 	curve := elliptic.P256()
 	bp, err := generateValidBatchProof(curve)
 	if err != nil {

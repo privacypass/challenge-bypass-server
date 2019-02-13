@@ -268,7 +268,10 @@ func main() {
 	}
 
 	// Retrieve the actual elliptic curve points for the commitment
-	// The commitment should match the current key that is being used for signing
+	// The commitment should match the current key that is being used for
+	// signing
+	//
+	// We only support curve point commitments for P256-SHA256
 	srv.G, srv.H, err = crypto.RetrieveCommPoints(GBytes, HBytes, srv.signKey)
 	if err != nil {
 		errLog.Fatal(err)

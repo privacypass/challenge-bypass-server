@@ -7,10 +7,13 @@ import (
 	"github.com/privacypass/challenge-bypass-server/crypto"
 )
 
-func TestEncodeTokenArray(t *testing.T) {
+// Tests that token arrays can be encoded correctly for all curve settings
+func TestEncodeIncrement(t *testing.T) { crypto.HandleTest(t, "increment", encodeTokenArray) }
+func TestEncodeSWU(t *testing.T)       { crypto.HandleTest(t, "swu", encodeTokenArray) }
+func encodeTokenArray(t *testing.T, h2cObj crypto.H2CObject) {
 	tokens := make([][]byte, 2)
 	for i := 0; i < len(tokens); i++ {
-		token, _, _, err := crypto.CreateBlindToken()
+		token, _, _, err := crypto.CreateBlindToken(h2cObj)
 		if err != nil {
 			t.Fatal(err)
 		}
