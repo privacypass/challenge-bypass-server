@@ -54,7 +54,7 @@ func makeTokenRedempRequest(x []byte, G, H *crypto.Point) (*BlindTokenRequest, e
 
 	// Server
 	// Sign the blind points (x is the signing key)
-	marshaledData, err := ApproveTokens(*request, x, G, H)
+	marshaledData, err := ApproveTokens(*request, x, "1.1", G, H)
 	if err != nil {
 		return nil, err
 	}
@@ -66,7 +66,7 @@ func makeTokenRedempRequest(x []byte, G, H *crypto.Point) (*BlindTokenRequest, e
 	// XXX: hardcoded curve assumption
 	curve := elliptic.P256()
 	hash := stdcrypto.SHA256
-	marshaledPoints, marshaledBP := crypto.GetMarshaledPointsAndDleq(marshaledData)
+	marshaledPoints, marshaledBP := marshaledData.Sigs, marshaledData.Proof
 	xbP, err := crypto.BatchUnmarshalPoints(curve, marshaledPoints)
 	if err != nil {
 		return nil, err
@@ -194,7 +194,7 @@ func fakeKeyAndCommitments() ([]byte, *crypto.Point, *crypto.Point, error) {
 func TestParseWrappedRequest(t *testing.T) {
 	reqBytes, err := fakeWrappedRequest()
 	if err != nil {
-		t.Fatalf("it's all borked")
+		t.Fatalf("it's all borked: %v", err)
 	}
 
 	var wrapped BlindTokenRequestWrapper
@@ -218,7 +218,7 @@ func TestParseWrappedRequest(t *testing.T) {
 func TestTokenIssuance(t *testing.T) {
 	reqBytes, bP, err := fakeIssueRequest()
 	if err != nil {
-		t.Fatalf("it's all borked")
+		t.Fatalf("it's all borked: %v", err)
 	}
 
 	var req BlindTokenRequest
@@ -235,18 +235,17 @@ func TestTokenIssuance(t *testing.T) {
 		t.Fatal("couldn't fake the keys and commitments")
 	}
 
-	marshaledResp, err := ApproveTokens(req, key, G, H)
+	marshaledResp, err := ApproveTokens(req, key, "1.1", G, H)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if bytes.Equal(marshaledResp[0], req.Contents[0]) {
+	if bytes.Equal(marshaledResp.Sigs[0], req.Contents[0]) {
 		t.Fatal("approved tokens were same as submitted tokens")
 	}
 
 	// Verify DLEQ proof
-	dleqIndex := len(marshaledResp) - 1
-	dleq, err := crypto.UnmarshalBatchProof(elliptic.P256(), marshaledResp[dleqIndex])
+	dleq, err := crypto.UnmarshalBatchProof(elliptic.P256(), marshaledResp.Proof)
 	if err != nil {
 		t.Fatal(err)
 	}

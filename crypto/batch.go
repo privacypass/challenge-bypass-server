@@ -20,9 +20,10 @@ import (
 	b64 "encoding/base64"
 	"encoding/json"
 	"errors"
-	"golang.org/x/crypto/sha3"
 	"math/big"
 	"strings"
+
+	"golang.org/x/crypto/sha3"
 )
 
 var (
@@ -63,7 +64,11 @@ func NewBatchProof(hash crypto.Hash, g, h *Point, m []*Point, z []*Point, x *big
 }
 
 func ComputeComposites(hash crypto.Hash, curve elliptic.Curve, G, Y *Point, P, Q []*Point) (*Point, *Point, [][]byte, error) {
-	// seed = H(G, Y, [P], [Qs])
+	if len(P) != len(Q) {
+		return nil, nil, nil, ErrUnequalPointCounts
+	}
+
+	// seed = H(G, Y, [P], [Q])
 	H := hash.New()
 	H.Write(G.Marshal())
 	H.Write(Y.Marshal())

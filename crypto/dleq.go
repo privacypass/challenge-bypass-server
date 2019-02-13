@@ -40,8 +40,8 @@ type Proof struct {
 }
 
 type Base64Proof struct {
-	R    string
-	C    string
+	R string
+	C string
 }
 
 func (p *Proof) IsComplete() bool {

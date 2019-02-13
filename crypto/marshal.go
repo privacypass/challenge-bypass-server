@@ -22,18 +22,11 @@ func ParseKeyFile(keyFilePath string, signingKey bool) ([]elliptic.Curve, [][]by
 	var block *pem.Block
 	var curves []elliptic.Curve
 	var keys [][]byte
-	count := 0
 
 	for {
-		// We should only decode one signing key
-		if count > 0 && signingKey {
-			return nil, nil, fmt.Errorf("attempted to decode more than one key for signing")
-		}
-
 		block, encodedKey = pem.Decode(encodedKey)
-
 		if block == nil {
-			return nil, nil, fmt.Errorf("failed to find EC PRIVATE KEY in PEM data after skipping types %v", skippedTypes)
+			return nil, nil, fmt.Errorf("PEM block is nil, this should not happen")
 		}
 
 		if block.Type == "EC PRIVATE KEY" {
@@ -47,10 +40,22 @@ func ParseKeyFile(keyFilePath string, signingKey bool) ([]elliptic.Curve, [][]by
 			skippedTypes = append(skippedTypes, block.Type)
 		}
 
+		// break if there are no keys left
 		if len(encodedKey) == 0 {
 			break
 		}
-		count++
+	}
+
+	if signingKey && len(keys) > 1 {
+		return nil, nil, fmt.Errorf("We should only decode one signing key.")
+	}
+
+	if len(keys) == 0 {
+		return nil, nil, fmt.Errorf("No key decoded.")
+	}
+
+	if len(curves) == 0 {
+		return nil, nil, fmt.Errorf("No curve decoded.")
 	}
 
 	return curves, keys, nil

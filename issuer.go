@@ -4,6 +4,7 @@ import (
 	stdcrypto "crypto"
 	"crypto/elliptic"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math/big"
@@ -28,20 +29,24 @@ var (
 )
 
 // ApproveTokens applies the issuer's secret key to each token in the request.
-// It returns an array of marshaled approved values along with a batch DLEQ proof.
-func ApproveTokens(req BlindTokenRequest, key []byte, G, H *crypto.Point) ([][]byte, error) {
+// It returns a struct of values containing:
+// 		- signed tokens
+// 		- a batched DLEQ proof
+// 		- a string determining the version of the key that is being used
+func ApproveTokens(req BlindTokenRequest, key []byte, keyVersion string, G, H *crypto.Point) (IssuedTokenResponse, error) {
 	// Unmarshal the incoming blinded points
 	// XXX: hardcoded curve assumption
+	issueResponse := IssuedTokenResponse{}
 	P, err := crypto.BatchUnmarshalPoints(elliptic.P256(), req.Contents)
 	if err != nil {
-		return nil, err
+		return issueResponse, err
 	}
 
 	// Sign the points
 	Q := make([]*crypto.Point, len(P))
 	for i := 0; i < len(Q); i++ {
 		if !P[i].IsOnCurve() {
-			return nil, ErrNotOnCurve
+			return issueResponse, ErrNotOnCurve
 		}
 		Q[i] = crypto.SignPoint(P[i], key)
 	}
@@ -49,28 +54,34 @@ func ApproveTokens(req BlindTokenRequest, key []byte, G, H *crypto.Point) ([][]b
 	// Generate batch DLEQ proof
 	bp, err := crypto.NewBatchProof(stdcrypto.SHA256, G, H, P, Q, new(big.Int).SetBytes(key))
 	if err != nil {
-		return nil, err
+		return issueResponse, err
 	}
 
 	// Check that the proof is valid
 	if !bp.Verify() {
-		return nil, ErrInvalidBatchProof
+		return issueResponse, ErrInvalidBatchProof
 	}
 
 	// Marshal the proof for response transmission
 	bpData, err := bp.MarshalForResp()
 	if err != nil {
-		return nil, err
+		return issueResponse, err
 	}
 
 	// Batch marshal the signed curve points
 	pointData, err := crypto.BatchMarshalPoints(Q)
 	if err != nil {
-		return nil, err
+		return issueResponse, err
+	}
+
+	issueResponse = IssuedTokenResponse{
+		Sigs:    pointData,
+		Proof:   bpData,
+		Version: keyVersion,
 	}
 
 	// Returns an array containing marshaled points and batch DLEQ proof
-	return append(pointData, bpData), nil
+	return issueResponse, nil
 }
 
 // RedeemToken checks a redemption request against the observed request data
@@ -104,7 +115,7 @@ func RedeemToken(req BlindTokenRequest, host, path []byte, keys [][]byte) error 
 
 	if !valid {
 		metrics.CounterRedeemErrorVerify.Inc()
-		return fmt.Errorf("%s, host: %s, path: %s", ErrInvalidMAC.Error(), host, path)
+		return fmt.Errorf("%s, host: %s, path: %s, token: %v, request_binder: %v", ErrInvalidMAC.Error(), host, path, new(big.Int).SetBytes(token), new(big.Int).SetBytes(requestBinder))
 	}
 
 	doubleSpent := SpentTokens.CheckToken(token)
@@ -125,7 +136,7 @@ func RedeemToken(req BlindTokenRequest, host, path []byte, keys [][]byte) error 
 // encodes the new points and writes them back to the client along with a
 // batch DLEQ proof.
 // Return nil on success, caller closes the connection.
-func HandleIssue(conn *net.TCPConn, req BlindTokenRequest, key []byte, G, H *crypto.Point, maxTokens int) error {
+func HandleIssue(conn *net.TCPConn, req BlindTokenRequest, key []byte, keyVersion string, G, H *crypto.Point, maxTokens int) error {
 	if req.Type != ISSUE {
 		metrics.CounterIssueErrorFormat.Inc()
 		return ErrUnexpectedRequestType
@@ -137,20 +148,20 @@ func HandleIssue(conn *net.TCPConn, req BlindTokenRequest, key []byte, G, H *cry
 	}
 
 	// This also includes the dleq proof now
-	marshaledTokenList, err := ApproveTokens(req, key, G, H)
+	issueResponse, err := ApproveTokens(req, key, keyVersion, G, H)
 	if err != nil {
 		return err
 	}
 
-	// EncodeByteArrays encodes the [][]byte as JSON
-	jsonTokenList, err := EncodeByteArrays(marshaledTokenList)
+	// Encodes the issue response as a JSON object
+	jsonResp, err := json.Marshal(issueResponse)
 	if err != nil {
 		return err
 	}
 
 	// which we then wrap in another layer of base64 to avoid any transit or parsing mishaps
-	base64Envelope := make([]byte, base64.StdEncoding.EncodedLen(len(jsonTokenList)))
-	base64.StdEncoding.Encode(base64Envelope, jsonTokenList)
+	base64Envelope := make([]byte, base64.StdEncoding.EncodedLen(len(jsonResp)))
+	base64.StdEncoding.Encode(base64Envelope, jsonResp)
 
 	// write back as "[b64 blob]" since the extension expects them formatted as
 	// "signatures=[b64 blob]" in the HTTP response body

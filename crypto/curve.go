@@ -152,22 +152,6 @@ func BatchMarshalPoints(points []*Point) ([][]byte, error) {
 	return data, nil
 }
 
-// We combine the marshaled points with the DLEQ proof
-// This function splits the points and the DLEQ proof for further unmarshaling
-func GetMarshaledPointsAndDleq(data [][]byte) ([][]byte, []byte) {
-	marshaledPoints := make([][]byte, len(data)-1)
-	var batchProof []byte
-	for i, v := range data {
-		if i < len(data)-1 {
-			marshaledPoints[i] = v
-		} else {
-			batchProof = data[i]
-		}
-	}
-
-	return marshaledPoints, batchProof
-}
-
 func NewPoint(curve elliptic.Curve, x, y *big.Int) (*Point, error) {
 	if curve == nil {
 		return nil, ErrUnspecifiedCurve
@@ -232,7 +216,9 @@ func HashToCurve(curve elliptic.Curve, hash crypto.Hash, data []byte) (*Point, e
 	var ctr = make([]byte, 4)
 	var h = hash.New()
 	h.Write([]byte(separator))
-	for i := 0; i < 10; i++ {
+	// Obviously this is bad practise, but increasing this number rules out probabilistic failures.
+	// We should implement the SWU method for encoding bytes to curves in the future.
+	for i := 0; i < 20; i++ {
 		binary.LittleEndian.PutUint32(ctr, uint32(i))
 		h.Write(data)
 		h.Write(ctr)

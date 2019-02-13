@@ -12,6 +12,10 @@ import (
 )
 
 func setup(curve elliptic.Curve) ([]byte, *Point, *Point, error) {
+	// All public keys are going to be generators, so GenerateKey is a handy
+	// test function. However, TESTING ONLY. Maintaining the discrete log
+	// relationship breaks the token scheme. Ideally the generator points
+	// would come from a group PRF or something like Elligator.
 	x, _, _, err := elliptic.GenerateKey(curve, rand.Reader)
 	if err != nil {
 		return nil, nil, nil, err
@@ -31,10 +35,6 @@ func setup(curve elliptic.Curve) ([]byte, *Point, *Point, error) {
 }
 
 func TestValidProof(t *testing.T) {
-	// All public keys are going to be generators, so GenerateKey is a handy
-	// test function. However, TESTING ONLY. Maintaining the discrete log
-	// relationship breaks the token scheme. Ideally the generator points
-	// would come from a group PRF or something like Elligator.
 	curve := elliptic.P256()
 	x, G, M, err := setup(curve)
 	if err != nil {
@@ -84,10 +84,6 @@ func TestValidProof(t *testing.T) {
 }
 
 func TestInvalidProof(t *testing.T) {
-	// All public keys are going to be generators, so GenerateKey is a handy
-	// test function. However, TESTING ONLY. Maintaining the discrete log
-	// relationship breaks the token scheme. Ideally the generator points
-	// would come from a group PRF or something like Elligator.
 	curve := elliptic.P256()
 	x, G, M, err := setup(curve)
 	if err != nil {
