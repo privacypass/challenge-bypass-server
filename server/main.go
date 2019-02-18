@@ -45,7 +45,8 @@ type Server struct {
 	signKey    []byte        // a big-endian marshaled big.Int representing an elliptic curve scalar for the current signing key
 	redeemKeys [][]byte      // current signing key + all old keys
 	G          *crypto.Point // elliptic curve point representation of generator G
-	H          *crypto.Point // elliptic curve point representation of commitment H to keys[0]
+	H          *crypto.Point // elliptic curve point representation of commitment H to signing key
+	keyVersion string        // the version of the key that is used
 }
 
 var DefaultServer = &Server{
@@ -106,7 +107,7 @@ func (c *Server) handle(conn *net.TCPConn) error {
 	switch request.Type {
 	case btd.ISSUE:
 		metrics.CounterIssueTotal.Inc()
-		err = btd.HandleIssue(conn, request, c.signKey, c.G, c.H, c.MaxTokens)
+		err = btd.HandleIssue(conn, request, c.signKey, c.keyVersion, c.G, c.H, c.MaxTokens)
 		if err != nil {
 			metrics.CounterIssueError.Inc()
 			return err
@@ -146,13 +147,12 @@ func (c *Server) loadKeys() error {
 
 	// optionally parse old keys that are valid for redemption
 	if c.RedeemKeysFilePath != "" {
+		errLog.Println("Adding extra keys for verifying token redemptions")
 		_, oldKeys, err := crypto.ParseKeyFile(c.RedeemKeysFilePath, false)
 		if err != nil {
 			return err
 		}
 		c.redeemKeys = append(c.redeemKeys, oldKeys...)
-	} else {
-		errLog.Println("No other keys provided for redeeming older tokens.")
 	}
 
 	return nil
@@ -238,6 +238,7 @@ func main() {
 	flag.IntVar(&srv.ListenPort, "p", 2416, "port to listen on")
 	flag.IntVar(&srv.MetricsPort, "m", 2417, "metrics port")
 	flag.IntVar(&srv.MaxTokens, "maxtokens", 100, "maximum number of tokens issued per request")
+	flag.StringVar(&srv.keyVersion, "keyversion", "1.0", "version sent to the client for choosing consistent key commitments for proof verification")
 	flag.Parse()
 
 	if configFile != "" {
@@ -267,7 +268,10 @@ func main() {
 	}
 
 	// Retrieve the actual elliptic curve points for the commitment
-	// The commitment should match the current key that is being used for signing
+	// The commitment should match the current key that is being used for
+	// signing
+	//
+	// We only support curve point commitments for P256-SHA256
 	srv.G, srv.H, err = crypto.RetrieveCommPoints(GBytes, HBytes, srv.signKey)
 	if err != nil {
 		errLog.Fatal(err)

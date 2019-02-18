@@ -5,8 +5,8 @@ import (
 )
 
 const (
-	testSignKeyFile = "testdata/test-sign-key.pem"
-	testOldKeysFile = "testdata/test-old-keys.pem"
+	testSignKeyFile = "../testdata/test-sign-key.pem"
+	testOldKeysFile = "../testdata/test-old-keys.pem"
 )
 
 func TestParseSigningKeyFile(t *testing.T) {

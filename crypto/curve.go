@@ -5,7 +5,6 @@ import (
 	"crypto"
 	"crypto/elliptic"
 	"crypto/rand"
-	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"io"
@@ -44,11 +43,7 @@ func (p *Point) UnmarshalJSON(data []byte) error {
 	if err != nil {
 		return err
 	}
-	err = p.Unmarshal(p.Curve, data)
-	if err != nil {
-		return err
-	}
-	return nil
+	return p.Unmarshal(p.Curve, data)
 }
 
 // Marshal calls through to elliptic.Marshal using the Curve field of the
@@ -124,7 +119,7 @@ func isOdd(x *big.Int) byte {
 }
 
 // BatchUnmarshalPoints takes a slice of P-256 curve points in the form specified
-// in section 4.3.6 of ANSI X9.62 (see Go crypto/elliptic) and retuns a slice
+// in section 4.3.6 of ANSI X9.62 (see Go crypto/elliptic) and returns a slice
 // of crypto.Point instances.
 func BatchUnmarshalPoints(curve elliptic.Curve, data [][]byte) ([]*Point, error) {
 	if curve == nil {
@@ -152,22 +147,6 @@ func BatchMarshalPoints(points []*Point) ([][]byte, error) {
 	return data, nil
 }
 
-// We combine the marshaled points with the DLEQ proof
-// This function splits the points and the DLEQ proof for further unmarshaling
-func GetMarshaledPointsAndDleq(data [][]byte) ([][]byte, []byte) {
-	marshaledPoints := make([][]byte, len(data)-1)
-	var batchProof []byte
-	for i, v := range data {
-		if i < len(data)-1 {
-			marshaledPoints[i] = v
-		} else {
-			batchProof = data[i]
-		}
-	}
-
-	return marshaledPoints, batchProof
-}
-
 func NewPoint(curve elliptic.Curve, x, y *big.Int) (*Point, error) {
 	if curve == nil {
 		return nil, ErrUnspecifiedCurve
@@ -178,82 +157,16 @@ func NewPoint(curve elliptic.Curve, x, y *big.Int) (*Point, error) {
 	return &Point{Curve: curve, X: x, Y: y}, nil
 }
 
-func NewRandomPoint(curve elliptic.Curve) (seed []byte, P *Point, ret error) {
-	if curve == nil {
-		return nil, nil, ErrUnspecifiedCurve
-	}
-	byteLen := (curve.Params().BitSize + 7) >> 3
-	seed = make([]byte, byteLen)
-	_, err := io.ReadFull(rand.Reader, seed)
+// NewRandomPoint: Generates a new random point on the curve specified in curveParams.
+func NewRandomPoint(h2cObj H2CObject) ([]byte, *Point, error) {
+	byteLen := getFieldByteLength(h2cObj.Curve())
+	data := make([]byte, byteLen)
+	_, err := io.ReadFull(rand.Reader, data)
 	if err != nil {
 		return nil, nil, err
 	}
-	var hash crypto.Hash
-	switch curve {
-	case elliptic.P256():
-		hash = crypto.SHA256
-	case elliptic.P384():
-		hash = crypto.SHA384
-	case elliptic.P521():
-		hash = crypto.SHA512
-	default:
-		hash = crypto.SHA256
-	}
-	P, ret = HashToCurve(curve, hash, seed)
-	return seed, P, ret
-}
-
-// This function hashes data to a point on the specified curve without
-// revealing the discrete logarithm w.r.t. a generator. It is not constant time
-// and thus potentially leaks information about the input data. The operation
-// works by repeatedly hashing the data, tagging it as a SEC1 compressed curve
-// point, and checking if the decompression produces a valid point.
-func HashToCurve(curve elliptic.Curve, hash crypto.Hash, data []byte) (*Point, error) {
-	if curve == nil {
-		return nil, ErrUnspecifiedCurve
-	}
-	byteLen := (curve.Params().BitSize + 7) >> 3
-
-	var separator string
-	switch curve {
-	case elliptic.P256():
-		separator = "1.2.840.10045.3.1.7 point generation seed"
-	case elliptic.P384():
-		separator = "1.3.132.0.34 point generation seed"
-	case elliptic.P521():
-		separator = "1.3.132.0.35 point generation seed"
-	default:
-		// Decompression assumes a = -3 so this could fail.
-		separator = "domain separator for point hashing"
-	}
-
-	var P = &Point{Curve: curve, X: nil, Y: nil}
-	var buf = make([]byte, byteLen+1)
-	var ctr = make([]byte, 4)
-	var h = hash.New()
-	h.Write([]byte(separator))
-	for i := 0; i < 10; i++ {
-		binary.LittleEndian.PutUint32(ctr, uint32(i))
-		h.Write(data)
-		h.Write(ctr)
-		sum := h.Sum(nil)
-		copy(buf[1:1+byteLen], sum[:byteLen])
-
-		buf[0] = 0x02
-		err := P.Unmarshal(curve, buf)
-		if err == nil {
-			return P, nil
-		}
-		buf[0] = 0x03
-		err = P.Unmarshal(curve, buf)
-		if err == nil {
-			return P, nil
-		}
-
-		data = sum
-		h.Reset()
-	}
-	return nil, ErrNoPointFound
+	P, err := h2cObj.HashToCurve(data)
+	return data, P, err
 }
 
 // This is just a bitmask with the number of ones starting at 8 then
@@ -267,6 +180,8 @@ func randScalar(curve elliptic.Curve, rand io.Reader) ([]byte, *big.Int, error) 
 	byteLen := (bitLen + 7) >> 3
 	buf := make([]byte, byteLen)
 
+	// When in doubt, do what agl does in elliptic.go. Presumably
+	// new(big.Int).SetBytes(b).Mod(N) would introduce bias, so we're sampling.
 	for true {
 		_, err := io.ReadFull(rand, buf)
 		if err != nil {
@@ -284,10 +199,11 @@ func randScalar(curve elliptic.Curve, rand io.Reader) ([]byte, *big.Int, error) 
 	return buf, new(big.Int).SetBytes(buf), nil
 }
 
-// We want to be able to load commitments in from file as part
-// of enabling DLEQ proof batching. Perform this sanity check to make
-// sure that commitments work properly.
-// Also returns point representations
+// RetrieveCommPoints loads commitments in from file as part
+// of enabling DLEQ proof batching and returns as a point representation.
+// Perform this sanity check to make sure that commitments work properly.
+//
+// This function only supports commitments from P256-SHA256 for now
 func RetrieveCommPoints(GBytes, HBytes, key []byte) (*Point, *Point, error) {
 	G := &Point{Curve: elliptic.P256(), X: nil, Y: nil}
 	err := G.Unmarshal(G.Curve, GBytes)

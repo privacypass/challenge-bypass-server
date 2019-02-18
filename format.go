@@ -19,9 +19,12 @@ type BlindTokenRequest struct {
 	Contents [][]byte `json:"contents"`
 }
 
-// Array of base64-encoded curve points
+// Contains response to Issue request
+// (incl. signed tokens, DLEQ proof and key version)
 type IssuedTokenResponse struct {
-	MarshaledPoints [][]byte
+	Sigs    [][]byte `json:"sigs"`
+	Proof   []byte   `json:"proof"`
+	Version string   `json:"version"`
 }
 
 type ReqType string

@@ -1,16 +1,14 @@
 package crypto
 
 import (
-	"crypto"
 	"crypto/elliptic"
 	"crypto/rand"
 	"encoding/hex"
-	"io"
 	"math/big"
 	"testing"
 )
 
-func TestUncompressedRoundTrip(t *testing.T) {
+func TestUncompressedRoundTripP256(t *testing.T) {
 	curve := elliptic.P256()
 	_, x, y, err := elliptic.GenerateKey(curve, rand.Reader)
 	if err != nil {
@@ -25,7 +23,7 @@ func TestUncompressedRoundTrip(t *testing.T) {
 	}
 }
 
-func TestCompressedRoundTrip(t *testing.T) {
+func TestCompressedRoundTripP256(t *testing.T) {
 	curve := elliptic.P256()
 	byteLen := (curve.Params().BitSize + 7) >> 3
 	bigTwo := new(big.Int).SetInt64(int64(2))
@@ -73,7 +71,7 @@ var pointCompressionTests = []struct {
 	},
 }
 
-func TestPointCompression(t *testing.T) {
+func TestPointCompressionP256(t *testing.T) {
 	for _, tt := range pointCompressionTests {
 		P := &Point{}
 		Px, ok := new(big.Int).SetString(tt.x, 16)
@@ -95,43 +93,14 @@ func TestPointCompression(t *testing.T) {
 	}
 }
 
-func TestHashToCurve(t *testing.T) {
-	curve := elliptic.P256()
-	byteLen := (curve.Params().BitSize + 7) >> 3
-	buf := make([]byte, byteLen)
-
-	_, err := io.ReadFull(rand.Reader, buf)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Generate a point from random bytes
-	P, err := HashToCurve(curve, crypto.SHA256, buf)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !P.IsOnCurve() {
-		t.Error("generated point P wasn't on the curve")
-	}
-
-	// Generate a different point from different random bytes
-	buf[0] ^= 0xFF
-	Q, err := HashToCurve(curve, crypto.SHA256, buf)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !Q.IsOnCurve() {
-		t.Error("generated point Q wasn't on the curve")
-	}
-	if P.X.Cmp(Q.X) == 0 && P.Y.Cmp(Q.Y) == 0 {
-		t.Error("HashToCurve generated duplicate points from different data")
-	}
-}
-
-func TestBatchMarshalRoundTrip(t *testing.T) {
+// Test batched proof marshaling for all H2C methods in an entire round-trip of
+// the protocol
+func TestBatchMarshalRoundTripInc(t *testing.T) { HandleTest(t, "increment", batchMarshalRoundTrip) }
+func TestBatchMarshalRoundTripSWU(t *testing.T) { HandleTest(t, "swu", batchMarshalRoundTrip) }
+func batchMarshalRoundTrip(t *testing.T, h2cObj H2CObject) {
 	points := make([]*Point, 50)
 	for i := 0; i < len(points); i++ {
-		_, point, err := NewRandomPoint(elliptic.P256())
+		_, point, err := NewRandomPoint(h2cObj)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -166,25 +135,6 @@ func BenchmarkDecompression(b *testing.B) {
 		err := Q.Unmarshal(Q.Curve, cBytes)
 		if err != nil {
 			b.Error(err)
-		}
-	}
-}
-
-func BenchmarkHashToCurve(b *testing.B) {
-	curve := elliptic.P256()
-	byteLen := (curve.Params().BitSize + 7) >> 3
-	buf := make([]byte, byteLen)
-
-	_, err := io.ReadFull(rand.Reader, buf)
-	if err != nil {
-		b.Fatal(err)
-	}
-
-	for i := 0; i < b.N; i++ {
-		// Generate a point from random bytes
-		_, err := HashToCurve(curve, crypto.SHA256, buf)
-		if err != nil {
-			b.Fatal("hash to curve failed")
 		}
 	}
 }
