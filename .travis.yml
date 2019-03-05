@@ -1,0 +1,6 @@
+language: generic
+os: linux
+services: docker
+script:
+  - make docker-lint
+  - make docker-test 

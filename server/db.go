@@ -1,17 +1,17 @@
 package server
 
 import (
-	"crypto/elliptic"
 	"database/sql"
-	b64 "encoding/base64"
 	"errors"
 	"fmt"
-	"log"
 	"time"
 
-	"github.com/brave-intl/challenge-bypass-server/crypto"
+	crypto "github.com/brave-intl/challenge-bypass-ristretto-ffi"
+	migrate "github.com/golang-migrate/migrate/v4"
+	"github.com/golang-migrate/migrate/v4/database/postgres"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/lib/pq"
-	"github.com/patrickmn/go-cache"
+	cache "github.com/patrickmn/go-cache"
 )
 
 type CachingConfig struct {
@@ -26,13 +26,8 @@ type DbConfig struct {
 
 type Issuer struct {
 	IssuerType string
-	GBytes     []byte
-	HBytes     []byte
-	PrivateKey []byte
+	SigningKey *crypto.SigningKey
 	MaxTokens  int
-
-	G *crypto.Point
-	H *crypto.Point
 }
 
 type Redemption struct {
@@ -59,13 +54,27 @@ func (c *Server) LoadDbConfig(config DbConfig) {
 
 func (c *Server) initDb() {
 	cfg := c.dbConfig
+
 	db, err := sql.Open("postgres", cfg.ConnectionURI)
-
 	if err != nil {
-		log.Fatal(err.Error())
+		panic(err)
 	}
-
 	c.db = db
+
+	driver, err := postgres.WithInstance(db, &postgres.Config{})
+	if err != nil {
+		panic(err)
+	}
+	m, err := migrate.NewWithDatabaseInstance(
+		"file:///src/migrations",
+		"postgres", driver)
+	if err != nil {
+		panic(err)
+	}
+	err = m.Migrate(3)
+	if err != migrate.ErrNoChange && err != nil {
+		panic(err)
+	}
 
 	if cfg.CachingConfig.Enabled {
 		c.caches = make(map[string]CacheInterface)
@@ -83,37 +92,22 @@ func (c *Server) fetchIssuer(issuerType string) (*Issuer, error) {
 	}
 
 	rows, err := c.db.Query(
-		`SELECT issuerType, G, H, privateKey, maxTokens FROM issuers WHERE issuerType=$1`, issuerType)
+		`SELECT issuer_type, signing_key, max_tokens FROM issuers WHERE issuer_type=$1`, issuerType)
 	if err != nil {
 		return nil, err
 	}
 
 	defer rows.Close()
 
-	for rows.Next() {
-		var G, H, privateKey string
+	if rows.Next() {
+		var signingKey []byte
 		var issuer = &Issuer{}
-		if err := rows.Scan(&issuer.IssuerType, &G, &H, &privateKey, &issuer.MaxTokens); err != nil {
+		if err := rows.Scan(&issuer.IssuerType, &signingKey, &issuer.MaxTokens); err != nil {
 			return nil, err
 		}
 
-		issuer.GBytes, err = b64.StdEncoding.DecodeString(G)
-		if err != nil {
-			return nil, err
-		}
-
-		issuer.HBytes, err = b64.StdEncoding.DecodeString(H)
-		if err != nil {
-			return nil, err
-		}
-
-		_, key, err := crypto.ParseKeyString(privateKey, true)
-		if err != nil {
-			return nil, err
-		}
-		issuer.PrivateKey = key[0]
-
-		issuer.G, issuer.H, err = crypto.RetrieveCommPoints(issuer.GBytes, issuer.HBytes, issuer.PrivateKey)
+		issuer.SigningKey = &crypto.SigningKey{}
+		err := issuer.SigningKey.UnmarshalText(signingKey)
 		if err != nil {
 			return nil, err
 		}
@@ -137,36 +131,18 @@ func (c *Server) createIssuer(issuerType string, maxTokens int) error {
 		maxTokens = 40
 	}
 
-	privateKey, err := crypto.GeneratePrivateKey()
+	signingKey, err := crypto.RandomSigningKey()
 	if err != nil {
 		return err
 	}
 
-	curves, keys, err := crypto.ParseKeyString(privateKey, true)
+	signingKeyTxt, err := signingKey.MarshalText()
 	if err != nil {
 		return err
 	}
-
-	if len(curves) == 0 || len(keys) == 0 {
-		return errors.New("Generated private key does not contain curves or keys")
-	}
-	curve := curves[0]
-	key := keys[0]
-	_, G, err := crypto.NewRandomPoint(curve)
-	if err != nil {
-		return err
-	}
-	Hx, Hy := curve.ScalarMult(G.X, G.Y, key)
-	H, err := crypto.NewPoint(curve, Hx, Hy)
-	if err != nil {
-		return err
-	}
-
-	Gstr := b64.StdEncoding.EncodeToString(elliptic.Marshal(G.Curve, G.X, G.Y))
-	Hstr := b64.StdEncoding.EncodeToString(elliptic.Marshal(H.Curve, H.X, H.Y))
 
 	rows, err := c.db.Query(
-		`INSERT INTO issuers(issuerType, G, H, privateKey, maxTokens) VALUES ($1, $2, $3, $4, $5)`, issuerType, Gstr, Hstr, privateKey, maxTokens)
+		`INSERT INTO issuers(issuer_type, signing_key, max_tokens) VALUES ($1, $2, $3)`, issuerType, signingKeyTxt, maxTokens)
 	if err != nil {
 		return err
 	}
@@ -175,9 +151,14 @@ func (c *Server) createIssuer(issuerType string, maxTokens int) error {
 	return nil
 }
 
-func (c *Server) redeemToken(issuerType, id, payload string) error {
+func (c *Server) redeemToken(issuerType string, preimage *crypto.TokenPreimage, payload string) error {
+	preimageTxt, err := preimage.MarshalText()
+	if err != nil {
+		return err
+	}
+
 	rows, err := c.db.Query(
-		`INSERT INTO redemptions(id, issuerType, ts, payload) VALUES ($1, $2, NOW(), $3)`, id, issuerType, payload)
+		`INSERT INTO redemptions(id, issuer_type, ts, payload) VALUES ($1, $2, NOW(), $3)`, preimageTxt, issuerType, payload)
 
 	if err != nil {
 		if err, ok := err.(*pq.Error); ok && err.Code == "23505" { // unique constraint violation
@@ -198,7 +179,7 @@ func (c *Server) fetchRedemption(issuerType, id string) (*Redemption, error) {
 	}
 
 	rows, err := c.db.Query(
-		`SELECT id, issuerType, ts, payload FROM redemptions WHERE id = $1 AND issuerType = $2`, id, issuerType)
+		`SELECT id, issuer_type, ts, payload FROM redemptions WHERE id = $1 AND issuer_type = $2`, id, issuerType)
 
 	if err != nil {
 		return nil, err
@@ -206,7 +187,7 @@ func (c *Server) fetchRedemption(issuerType, id string) (*Redemption, error) {
 
 	defer rows.Close()
 
-	for rows.Next() {
+	if rows.Next() {
 		var redemption = &Redemption{}
 		if err := rows.Scan(&redemption.Id, &redemption.IssuerType, &redemption.Timestamp, &redemption.Payload); err != nil {
 			return nil, err

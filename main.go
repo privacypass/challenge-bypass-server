@@ -1,71 +1,26 @@
 package main
 
 import (
-	"encoding/json"
-	"errors"
+	"context"
 	"flag"
-	"io/ioutil"
-	"log"
 	"os"
 	"strconv"
 
 	"github.com/brave-intl/challenge-bypass-server/server"
+	raven "github.com/getsentry/raven-go"
+	"github.com/sirupsen/logrus"
 )
-
-var DefaultServer = &server.Server{
-	ListenPort: 2416,
-}
-
-func loadConfigFile(filePath string) (server.Server, error) {
-	conf := *DefaultServer
-	data, err := ioutil.ReadFile(filePath)
-	if err != nil {
-		return conf, err
-	}
-	err = json.Unmarshal(data, conf)
-	if err != nil {
-		return conf, err
-	}
-	return conf, nil
-}
-
-var (
-	errLog               *log.Logger = log.New(os.Stderr, "[btd] ", log.LstdFlags|log.Lshortfile)
-	ErrEmptyDbConfigPath             = errors.New("no db config path specified")
-)
-
-func loadDbConfig(c *server.Server) error {
-	conf := server.DbConfig{}
-
-	if envConfig := os.Getenv("DBCONFIG"); envConfig != "" {
-		data := []byte(envConfig)
-		json.Unmarshal(data, &conf)
-
-		// Heroku style
-		if connectionURI := os.Getenv("DATABASE_URL"); connectionURI != "" {
-			conf.ConnectionURI = os.Getenv("DATABASE_URL")
-		}
-	} else {
-		if c.DbConfigPath == "" {
-			return ErrEmptyDbConfigPath
-		}
-
-		data, err := ioutil.ReadFile(c.DbConfigPath)
-		if err != nil {
-			return err
-		}
-		json.Unmarshal(data, &conf)
-	}
-
-	c.LoadDbConfig(conf)
-
-	return nil
-}
 
 func main() {
+	// Server setup
 	var configFile string
 	var err error
-	srv := *DefaultServer
+
+	serverCtx, logger := server.SetupLogger(context.Background())
+
+	logger.WithFields(logrus.Fields{"prefix": "main"}).Info("Loading config")
+
+	srv := *server.DefaultServer
 
 	flag.StringVar(&configFile, "config", "", "local config file for development (overrides cli options)")
 	flag.StringVar(&srv.DbConfigPath, "db_config", "", "path to the json file with database configuration")
@@ -73,9 +28,9 @@ func main() {
 	flag.Parse()
 
 	if configFile != "" {
-		srv, err = loadConfigFile(configFile)
+		srv, err = server.LoadConfigFile(configFile)
 		if err != nil {
-			errLog.Fatal(err)
+			logger.Panic(err)
 			return
 		}
 	}
@@ -86,15 +41,18 @@ func main() {
 		}
 	}
 
-	err = loadDbConfig(&srv)
+	err = srv.InitDbConfig()
 	if err != nil {
-		errLog.Fatal(err)
+		logger.Panic(err)
 	}
 
-	err = srv.ListenAndServe()
+	logger.WithFields(logrus.Fields{"prefix": "main"}).Info("Starting server")
+
+	err = srv.ListenAndServe(serverCtx, logger)
 
 	if err != nil {
-		errLog.Fatal(err)
+		raven.CaptureErrorAndWait(err, nil)
+		logger.Panic(err)
 		return
 	}
 }

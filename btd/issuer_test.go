@@ -1,257 +1,167 @@
 package btd
 
 import (
-	"bytes"
-	stdcrypto "crypto"
-	"crypto/elliptic"
-	crand "crypto/rand"
-	"errors"
+	"log"
 	"testing"
 
-	"github.com/brave-intl/challenge-bypass-server/crypto"
+	crypto "github.com/brave-intl/challenge-bypass-ristretto-ffi"
 )
 
 var (
-	testPayload = []byte("Some test payload")
+	testPayload = "Some test payload"
 )
 
 // Generates a small but well-formed ISSUE request for testing.
-func makeTokenIssueRequest() ([][]byte, [][]byte, []*crypto.Point, [][]byte, error) {
-	tokens := make([][]byte, 10)
-	bF := make([][]byte, len(tokens))
-	bP := make([]*crypto.Point, len(tokens))
+func makeTokenIssueRequest() ([]*crypto.Token, []*crypto.BlindedToken, error) {
+	tokens := make([]*crypto.Token, 10)
+	blindedTokens := make([]*crypto.BlindedToken, 10)
 	for i := 0; i < len(tokens); i++ {
-		token, bPoint, bFactor, err := crypto.CreateBlindToken()
+		token, err := crypto.RandomToken()
 		if err != nil {
-			return nil, nil, nil, nil, err
+			return nil, nil, err
 		}
 		tokens[i] = token
-		bP[i] = bPoint
-		bF[i] = bFactor
-	}
-	marshaledTokenList, err := crypto.BatchMarshalPoints(bP)
-	if err != nil {
-		return nil, nil, nil, nil, err
+		blindedTokens[i] = token.Blind()
 	}
 
-	return marshaledTokenList, tokens, bP, bF, nil
+	return tokens, blindedTokens, nil
 }
 
-func makeTokenRedempRequest(x []byte, G, H *crypto.Point) ([][]byte, error) {
+func makeTokenRedempRequest(sKey *crypto.SigningKey) (*crypto.TokenPreimage, *crypto.VerificationSignature, error) {
 	// Client
-	marshaledTokenList, tokens, bP, bF, err := makeTokenIssueRequest()
+	tokens, blindedTokens, err := makeTokenIssueRequest()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Client -> (request) -> Server
 
 	// Server
-	// Sign the blind points (x is the signing key)
-	marshaledPoints, marshaledBP, err := ApproveTokens(marshaledTokenList, x, G, H)
+	// Sign the blind points
+	signedTokens, dleqProof, err := ApproveTokens(blindedTokens, sKey)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Client <- (signed blind tokens) <- Server
 
-	// Client
-	// a. Umarshal signed+blinded points
-	// XXX: hardcoded curve assumption
-	curve := elliptic.P256()
-	hash := stdcrypto.SHA256
-	xbP, err := crypto.BatchUnmarshalPoints(curve, marshaledPoints)
-	if err != nil {
-		return nil, err
-	}
+	// Verify DLEQ proof
 
-	// b. Unmarshal and verify batch proof
-	// We need to re-sign all the tokens and re-compute
-	dleq, err := crypto.UnmarshalBatchProof(curve, marshaledBP)
-	if err != nil {
-		return nil, err
-	}
-	dleq.G = G
-	dleq.H = H
-	Q := signTokens(bP, x)
-	dleq.M, dleq.Z, err = recomputeComposites(G, H, bP, Q, hash, curve)
-	if err != nil {
-		return nil, err
-	}
-	if !dleq.Verify() {
-		return nil, errors.New("Batch proof failed to verify")
-	}
-
-	// c. Unblind a point
-	xT := crypto.UnblindPoint(xbP[0], bF[0])
-	// d. Derive MAC key
-	sk := crypto.DeriveKey(hash, xT, tokens[0])
-	// e. MAC the request binding data
-	reqData := [][]byte{testPayload}
-	reqBinder := crypto.CreateRequestBinding(hash, sk, reqData)
-
-	return [][]byte{tokens[0], reqBinder}, nil
-}
-
-// Recompute composite values for DLEQ proof
-func recomputeComposites(G, Y *crypto.Point, P, Q []*crypto.Point, hash stdcrypto.Hash, curve elliptic.Curve) (*crypto.Point, *crypto.Point, error) {
-	compositeM, compositeZ, _, err := crypto.ComputeComposites(hash, curve, G, Y, P, Q)
-	return compositeM, compositeZ, err
-}
-
-// Sign tokens for verifying DLEQ proof
-func signTokens(P []*crypto.Point, key []byte) []*crypto.Point {
-	Q := make([]*crypto.Point, len(P))
-	for i := 0; i < len(Q); i++ {
-		Q[i] = crypto.SignPoint(P[i], key)
-	}
-	return Q
-}
-
-func fakeIssueRequest() ([][]byte, []*crypto.Point, error) {
-	reqContents, _, P, _, err := makeTokenIssueRequest()
-	if err != nil {
-		return nil, nil, err
-	}
-	return reqContents, P, nil
-}
-
-// Fakes the sampling of a signing key
-func fakeSigningKey() ([]byte, error) {
-	k, _, _, err := elliptic.GenerateKey(elliptic.P256(), crand.Reader)
-	if err != nil {
-		return nil, err
-	}
-	return k, nil
-}
-
-// Fakes the procedure of producing commitments for a signing key
-func fakeCommitments(key []byte) (*crypto.Point, *crypto.Point, error) {
-	curve := elliptic.P256()
-	_, Gx, Gy, err := elliptic.GenerateKey(curve, crand.Reader)
+	pKey := sKey.PublicKey()
+	clientUnblindedTokens, err := dleqProof.VerifyAndUnblind(tokens, blindedTokens, signedTokens, pKey)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	G := &crypto.Point{Curve: curve, X: Gx, Y: Gy}
-	Hx, Hy := curve.ScalarMult(Gx, Gy, key)
-	H := &crypto.Point{Curve: curve, X: Hx, Y: Hy}
+	clientUnblindedToken := clientUnblindedTokens[0]
 
-	return G, H, nil
-}
+	// Redemption
 
-// Combines the above two methods
-func fakeKeyAndCommitments() ([]byte, *crypto.Point, *crypto.Point, error) {
-	x, err := fakeSigningKey()
+	// client derives the shared key from the unblinded token
+	clientvKey := clientUnblindedToken.DeriveVerificationKey()
+
+	// client signs a message using the shared key
+	clientSig, err := clientvKey.Sign(testPayload)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
+	preimage := clientUnblindedToken.Preimage()
 
-	G, H, err := fakeCommitments(x)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-
-	return x, G, H, nil
+	return preimage, clientSig, nil
 }
 
 func TestTokenIssuance(t *testing.T) {
-	reqContents, bP, err := fakeIssueRequest()
+	_, blindedTokens, err := makeTokenIssueRequest()
 	if err != nil {
 		t.Fatalf("it's all borked")
 	}
 
-	key, G, H, err := fakeKeyAndCommitments()
+	sKey, err := crypto.RandomSigningKey()
 	if err != nil {
-		t.Fatal("couldn't fake the keys and commitments")
+		log.Fatalln(err)
+		t.Fatal("couldn't generate the signing key")
 	}
+	pKey := sKey.PublicKey()
 
-	pointData, bpData, err := ApproveTokens(reqContents, key, G, H)
+	signedTokens, dleqProof, err := ApproveTokens(blindedTokens, sKey)
 	if err != nil {
 		t.Fatal(err)
-	}
-
-	if bytes.Equal(pointData[0], reqContents[0]) {
-		t.Fatal("approved tokens were same as submitted tokens")
 	}
 
 	// Verify DLEQ proof
-	dleq, err := crypto.UnmarshalBatchProof(elliptic.P256(), bpData)
+
+	proofVerfied, err := dleqProof.Verify(blindedTokens, signedTokens, pKey)
 	if err != nil {
 		t.Fatal(err)
 	}
-	dleq.G = G
-	dleq.H = H
-	Q := signTokens(bP, key)
-	dleq.M, dleq.Z, err = recomputeComposites(G, H, bP, Q, stdcrypto.SHA256, elliptic.P256())
-	if !dleq.Verify() {
+	if !proofVerfied {
 		t.Fatal("DLEQ proof failed to verify")
 	}
 }
 
 // Tests token redemption for multiple keys
 func TestTokenRedemption(t *testing.T) {
-	x1, G1, H1, err := fakeKeyAndCommitments()
+	sKey1, err := crypto.RandomSigningKey()
 	if err != nil {
 		t.Fatal(err)
 	}
-	x2, G2, H2, err := fakeKeyAndCommitments()
+	sKey2, err := crypto.RandomSigningKey()
 	if err != nil {
 		t.Fatal(err)
 	}
-	x3, G3, H3, err := fakeKeyAndCommitments()
+	sKey3, err := crypto.RandomSigningKey()
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Redemption requests for all three keys
-	blRedempContents1, err := makeTokenRedempRequest(x1, G1, H1)
+	preimage1, sig1, err := makeTokenRedempRequest(sKey1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	blRedempContents2, err := makeTokenRedempRequest(x2, G2, H2)
+	preimage2, sig2, err := makeTokenRedempRequest(sKey2)
 	if err != nil {
 		t.Fatal(err)
 	}
-	blRedempContents3, err := makeTokenRedempRequest(x3, G3, H3)
+	preimage3, sig3, err := makeTokenRedempRequest(sKey3)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Only add two keys to check that the third redemption fails
-	redeemKeys := [][]byte{x1, x2}
+	redeemKeys := []*crypto.SigningKey{sKey1, sKey2}
 
 	// Server
 	// Check valid token redemption
-	err = RedeemToken(blRedempContents1, testPayload, redeemKeys)
+	err = VerifyTokenRedemption(preimage1, sig1, testPayload, redeemKeys)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = RedeemToken(blRedempContents2, testPayload, redeemKeys)
+	err = VerifyTokenRedemption(preimage2, sig2, testPayload, redeemKeys)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Check failed redemption
-	err = RedeemToken(blRedempContents3, testPayload, redeemKeys)
+	err = VerifyTokenRedemption(preimage3, sig3, testPayload, redeemKeys)
 	if err == nil {
 		t.Fatal("This redemption should not be verified correctly.")
 	}
 }
 
 func TestBadMAC(t *testing.T) {
-	x, G, H, err := fakeKeyAndCommitments()
+	sKey, err := crypto.RandomSigningKey()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	blRedempContents, err := makeTokenRedempRequest(x, G, H)
+	preimage, sig, err := makeTokenRedempRequest(sKey)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Server
 	// Check bad token redemption
-	err = RedeemToken(blRedempContents, []byte("bad payload"), [][]byte{x})
+	err = VerifyTokenRedemption(preimage, sig, "bad payload", []*crypto.SigningKey{sKey})
 	if err == nil {
 		t.Fatal("No error occurred even though MAC should be bad")
 	}

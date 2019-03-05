@@ -1,0 +1,32 @@
+version: "3.4"
+
+networks:
+  cb:
+    driver: bridge
+
+services:
+  postgres:
+    container_name: postgres
+    image: postgres:10.4
+    environment:
+      - "POSTGRES_USER=btokens"
+      - "POSTGRES_PASSWORD=password"
+    networks:
+      - cb
+  challenge-bypass:
+    container_name: challenge-bypass
+    image: challenge-bypass-builder 
+    restart: always
+    build:
+      context: .
+      target: go_builder 
+    ports:
+      - "2416:2416"
+    environment:
+      - "SENTRY_DSN"
+      - "DATABASE_URL=postgres://btokens:password@postgres/btokens?sslmode=disable"
+    depends_on:
+      - postgres
+    networks:
+      - cb
+

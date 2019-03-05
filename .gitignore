@@ -1,4 +1,5 @@
 /.GOPATH
-/bin
 _vendor*/
 vendor/
+Makefile
+.env

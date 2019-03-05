@@ -1,96 +1,65 @@
 package btd
 
 import (
-	stdcrypto "crypto"
-	"crypto/elliptic"
 	"errors"
 	"fmt"
-	"math/big"
 
-	"github.com/brave-intl/challenge-bypass-server/crypto"
+	crypto "github.com/brave-intl/challenge-bypass-ristretto-ffi"
 )
 
 var (
-	ErrInvalidMAC                = errors.New("binding MAC didn't match derived MAC")
-	ErrNoDoubleSpendList         = errors.New("bloom filter is not initialized")
-	ErrDoubleSpend               = errors.New("token was already spent")
-	ErrTooManyTokens             = errors.New("ISSUE request contained too many tokens")
-	ErrTooFewRedemptionArguments = errors.New("REDEEM request did not contain enough arguments")
-	ErrUnexpectedRequestType     = errors.New("unexpected request type")
-	ErrInvalidBatchProof         = errors.New("New batch proof for signed tokens is invalid")
-	ErrNotOnCurve                = errors.New("One or more points not found on curve")
+	ErrInvalidMAC        = errors.New("binding MAC didn't match derived MAC")
+	ErrInvalidBatchProof = errors.New("New batch proof for signed tokens is invalid")
 )
 
 // ApproveTokens applies the issuer's secret key to each token in the request.
 // It returns an array of marshaled approved values along with a batch DLEQ proof.
-func ApproveTokens(pretokens [][]byte, key []byte, G, H *crypto.Point) ([][]byte, []byte, error) {
-	// Unmarshal the incoming blinded points
-	// XXX: hardcoded curve assumption
-	P, err := crypto.BatchUnmarshalPoints(elliptic.P256(), pretokens)
-	if err != nil {
-		return nil, nil, err
-	}
+func ApproveTokens(blindedTokens []*crypto.BlindedToken, key *crypto.SigningKey) ([]*crypto.SignedToken, *crypto.BatchDLEQProof, error) {
+	var err error
 
-	// Sign the points
-	Q := make([]*crypto.Point, len(P))
-	for i := 0; i < len(Q); i++ {
-		if !P[i].IsOnCurve() {
-			return nil, nil, ErrNotOnCurve
+	signedTokens := make([]*crypto.SignedToken, len(blindedTokens))
+	for i, blindedToken := range blindedTokens {
+		signedTokens[i], err = key.Sign(blindedToken)
+		if err != nil {
+			return []*crypto.SignedToken{}, nil, err
 		}
-		Q[i] = crypto.SignPoint(P[i], key)
 	}
 
-	// Generate batch DLEQ proof
-	bp, err := crypto.NewBatchProof(stdcrypto.SHA256, G, H, P, Q, new(big.Int).SetBytes(key))
+	proof, err := crypto.NewBatchDLEQProof(blindedTokens, signedTokens, key)
 	if err != nil {
-		return nil, nil, err
+		return []*crypto.SignedToken{}, nil, err
 	}
 
-	// Check that the proof is valid
-	if !bp.Verify() {
-		return nil, nil, ErrInvalidBatchProof
-	}
-
-	// Marshal the proof for response transmission
-	bpData, err := bp.MarshalForResp()
+	ok, err := proof.Verify(blindedTokens, signedTokens, key.PublicKey())
 	if err != nil {
-		return nil, nil, err
+		return []*crypto.SignedToken{}, nil, err
+	}
+	if !ok {
+		return []*crypto.SignedToken{}, nil, ErrInvalidBatchProof
 	}
 
-	// Batch marshal the signed curve points
-	pointData, err := crypto.BatchMarshalPoints(Q)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	// Returns an array containing marshaled points and batch DLEQ proof
-	return pointData, bpData, nil
+	return signedTokens, proof, err
 }
 
-// RedeemToken checks a redemption request against the observed request data
+// VerifyTokenRedemption checks a redemption request against the observed request data
 // and MAC according a set of keys. keys keeps a set of private keys that
 // are ever used to sign the token so we can rotate private key easily
-// It also checks for double-spend. Returns nil on success and an
-// error on failure.
-func RedeemToken(tokenContents [][]byte, payload []byte, keys [][]byte) error {
-	// XXX: hardcoded curve assumption
-	curve := elliptic.P256()
-	hash := stdcrypto.SHA256
-
-	token, requestBinder := tokenContents[0], tokenContents[1]
-	T, err := crypto.HashToCurve(curve, hash, token)
-	if err != nil {
-		return err
-	}
-	requestData := [][]byte{payload}
-
+// Returns nil on success and an error on failure.
+func VerifyTokenRedemption(preimage *crypto.TokenPreimage, signature *crypto.VerificationSignature, payload string, keys []*crypto.SigningKey) error {
 	var valid bool
+	var err error
 	for _, key := range keys {
-		sharedPoint := crypto.SignPoint(T, key)
-		sharedKey := crypto.DeriveKey(hash, sharedPoint, token)
+		// server derives the unblinded token using its key and the clients token preimage
+		unblindedToken := key.RederiveUnblindedToken(preimage)
 
-		valid = crypto.CheckRequestBinding(hash, sharedKey, requestBinder, requestData)
+		// server derives the shared key from the unblinded token
+		sharedKey := unblindedToken.DeriveVerificationKey()
 
+		// server signs the same message using the shared key and compares the client signature to its own
+		valid, err = sharedKey.Verify(signature, payload)
+		if err != nil {
+			return err
+		}
 		if valid {
 			break
 		}
