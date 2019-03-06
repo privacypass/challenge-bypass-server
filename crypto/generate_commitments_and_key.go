@@ -14,7 +14,7 @@ import (
 	"os"
 	"time"
 
-	"code.cfops.it/crypto/btd/crypto"
+	"github.com/privacypass/challenge-bypass-server/crypto"
 )
 
 func main() {
