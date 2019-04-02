@@ -1,4 +1,4 @@
-FROM rustlang/rust:nightly as rust_builder
+FROM rustlang/rust@sha256:5af55c68b21232886d8d9bd35563b8a2ac0f71952369fb71346a51b331acd0d4 as rust_builder
 RUN rustup target add x86_64-unknown-linux-musl
 RUN apt-get update && apt-get install -y musl-tools
 RUN git clone https://github.com/brave-intl/challenge-bypass-ristretto-ffi /src
@@ -23,4 +23,6 @@ FROM alpine:3.6
 COPY --from=go_builder /src/challenge-bypass-server /bin/
 COPY migrations /src/migrations
 EXPOSE 2416
+ENV DATABASE_URL=
+ENV DBCONFIG="{}"
 CMD ["/bin/challenge-bypass-server"]

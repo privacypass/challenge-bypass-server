@@ -3,7 +3,7 @@ module github.com/brave-intl/challenge-bypass-server
 require (
 	github.com/asaskevich/govalidator v0.0.0-20180720115003-f9ffefc3facf // indirect
 	github.com/brave-intl/bat-go v0.1.1
-	github.com/brave-intl/challenge-bypass-ristretto-ffi v0.0.0-20190128173058-ab1a9a02d07a
+	github.com/brave-intl/challenge-bypass-ristretto-ffi v1.0.0-20190128173058-f0a50b88caf
 	github.com/certifi/gocertifi v0.0.0-20180905225744-ee1a9a0726d2 // indirect
 	github.com/docker/distribution v2.7.0+incompatible // indirect
 	github.com/getsentry/raven-go v0.2.0
