@@ -23,4 +23,5 @@ COPY migrations /src/migrations
 EXPOSE 2416
 ENV DATABASE_URL=
 ENV DBCONFIG="{}"
+ENV MAX_DB_CONNECTION=100
 CMD ["/bin/challenge-bypass-server"]

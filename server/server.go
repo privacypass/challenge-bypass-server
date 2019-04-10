@@ -9,6 +9,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/brave-intl/bat-go/middleware"
@@ -64,6 +65,12 @@ func (c *Server) InitDbConfig() error {
 	// Heroku style
 	if connectionURI := os.Getenv("DATABASE_URL"); connectionURI != "" {
 		conf.ConnectionURI = os.Getenv("DATABASE_URL")
+	}
+
+	if maxConnection := os.Getenv("MAX_DB_CONNECTION"); maxConnection != "" {
+		if count, err := strconv.Atoi(maxConnection); err == nil {
+			conf.MaxConnection = count
+		}
 	}
 
 	c.LoadDbConfig(conf)
