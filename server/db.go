@@ -22,6 +22,7 @@ type CachingConfig struct {
 type DbConfig struct {
 	ConnectionURI string        `json:"connectionURI"`
 	CachingConfig CachingConfig `json:"caching"`
+	MaxConnection int           `json:"maxConnection"`
 }
 
 type Issuer struct {
@@ -59,6 +60,7 @@ func (c *Server) initDb() {
 	if err != nil {
 		panic(err)
 	}
+	db.SetMaxOpenConns(cfg.MaxConnection)
 	c.db = db
 
 	driver, err := postgres.WithInstance(db, &postgres.Config{})
