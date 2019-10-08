@@ -1,6 +1,6 @@
 # Challenge Bypass Server
 
-This is a TCP server that is comptaible with the [Privacy Pass](https://github.com/privacypass/challenge-bypass-extension) browser extension. In particular, the server implements the server-side actions in a 'blind signing' protocol. The protocol is based on a variant of a Verifiable, Oblivious Pseudorandom Function (VOPRF) established by [Jarecki, Kiayias and Krawczyk](https://eprint.iacr.org/2014/650.pdf). When adapted to our needs, this scheme allows us to achieve the same goals as a 'Blind RSA' variant but using faster primitives, less bandwidth, and simpler secret-key operational logistics in comparison.
+This is a TCP server that is compatible with the [Privacy Pass](https://github.com/privacypass/challenge-bypass-extension) browser extension. In particular, the server implements the server-side actions in a 'blind signing' protocol. The protocol is based on a variant of a Verifiable, Oblivious Pseudorandom Function (VOPRF) established by [Jarecki, Kiayias and Krawczyk](https://eprint.iacr.org/2014/650.pdf). When adapted to our needs, this scheme allows us to achieve the same goals as a 'Blind RSA' variant but using faster primitives, less bandwidth, and simpler secret-key operational logistics in comparison.
 
 ### Contents
 
