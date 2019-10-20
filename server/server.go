@@ -21,7 +21,7 @@ import (
 
 var (
 	Version        = "dev"
-	maxRequestSize = int64(20 * 1024) // ~10kB is expected size for 100*base64([64]byte) + ~framing
+	maxRequestSize = int64(1024 * 1024) // 1MiB
 
 	ErrNoSecretKey         = errors.New("server config does not contain a key")
 	ErrRequestTooLarge     = errors.New("request too large to process")

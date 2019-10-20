@@ -153,13 +153,21 @@ func (c *Server) createIssuer(issuerType string, maxTokens int) error {
 	return nil
 }
 
+type Queryable interface {
+	Query(query string, args ...interface{}) (*sql.Rows, error)
+}
+
 func (c *Server) redeemToken(issuerType string, preimage *crypto.TokenPreimage, payload string) error {
+	return redeemTokenWithDB(c.db, issuerType, preimage, payload)
+}
+
+func redeemTokenWithDB(db Queryable, issuerType string, preimage *crypto.TokenPreimage, payload string) error {
 	preimageTxt, err := preimage.MarshalText()
 	if err != nil {
 		return err
 	}
 
-	rows, err := c.db.Query(
+	rows, err := db.Query(
 		`INSERT INTO redemptions(id, issuer_type, ts, payload) VALUES ($1, $2, NOW(), $3)`, preimageTxt, issuerType, payload)
 
 	if err != nil {

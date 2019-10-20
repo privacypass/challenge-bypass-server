@@ -6,7 +6,7 @@ WORKDIR /src
 RUN git checkout 1.0.0-pre.1
 RUN cargo build --target=x86_64-unknown-linux-musl --features nightly
 
-FROM golang:1.11.4 as go_builder
+FROM golang:1.13.1 as go_builder
 RUN apt-get update && apt-get install -y postgresql-client
 RUN go get -u github.com/golangci/golangci-lint/cmd/golangci-lint
 RUN mkdir /src
