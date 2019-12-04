@@ -98,7 +98,7 @@ func TestInvalidBatchProofP256(t *testing.T) {
 	}
 
 	// and a 100th point with a different discrete log
-	m, Mx, My, err := elliptic.GenerateKey(curve, rand.Reader)
+	m, Mx, My, _ := elliptic.GenerateKey(curve, rand.Reader)
 	Zx, Zy := curve.ScalarMult(Mx, My, m)
 	M[99] = &Point{Curve: curve, X: Mx, Y: My}
 	Z[99] = &Point{Curve: curve, X: Zx, Y: Zy}

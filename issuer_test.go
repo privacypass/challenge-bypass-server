@@ -268,7 +268,7 @@ func tokenIssuance(t *testing.T, h2cObj crypto.H2CObject) {
 	dleq.G = G
 	dleq.H = H
 	Q := signTokens(bP, key)
-	dleq.M, dleq.Z, err = recomputeComposites(G, H, bP, Q, h2cObj.Hash(), h2cObj.Curve())
+	dleq.M, dleq.Z, _ = recomputeComposites(G, H, bP, Q, h2cObj.Hash(), h2cObj.Curve())
 	if !dleq.Verify() {
 		t.Fatal("DLEQ proof failed to verify")
 	}

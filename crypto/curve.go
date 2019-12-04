@@ -98,9 +98,8 @@ func (p *Point) Unmarshal(curve elliptic.Curve, data []byte) error {
 			p.Curve = curve
 			p.X, p.Y = x, y
 			return nil
-		} else {
-			return ErrInvalidPoint
 		}
+		return ErrInvalidPoint
 	}
 	if len(data) == (2*byteLen)+1 && data[0] == 0x04 {
 		// Uncompressed point
@@ -182,7 +181,7 @@ func randScalar(curve elliptic.Curve, rand io.Reader) ([]byte, *big.Int, error) 
 
 	// When in doubt, do what agl does in elliptic.go. Presumably
 	// new(big.Int).SetBytes(b).Mod(N) would introduce bias, so we're sampling.
-	for true {
+	for {
 		_, err := io.ReadFull(rand, buf)
 		if err != nil {
 			return nil, nil, err
