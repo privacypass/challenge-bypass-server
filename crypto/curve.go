@@ -39,11 +39,11 @@ func (p *Point) MarshalJSON() ([]byte, error) {
 
 func (p *Point) UnmarshalJSON(data []byte) error {
 	var byteRepr []byte
-	err := json.Unmarshal(data, byteRepr)
+	err := json.Unmarshal(data, &byteRepr)
 	if err != nil {
 		return err
 	}
-	return p.Unmarshal(p.Curve, data)
+	return p.Unmarshal(p.Curve, byteRepr)
 }
 
 // Marshal calls through to elliptic.Marshal using the Curve field of the
