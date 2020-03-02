@@ -26,6 +26,8 @@ github.com/bitly/go-hostpool v0.0.0-20171023180738-a3a6125de932/go.mod h1:NOuUCS
 github.com/bmizerany/assert v0.0.0-20160611221934-b7ed37b82869/go.mod h1:Ekp36dRnpXw/yCqJaO+ZrUyxD+3VXMFFr56k5XYrpB4=
 github.com/brave-intl/bat-go v0.1.1 h1:LwETyhc3axI++UMdLT4qDuEwuZw08qMYKqtDRPs238k=
 github.com/brave-intl/bat-go v0.1.1/go.mod h1:ob0XhWyX3Tqu2j0fJEoXouwc63axNdPpyyg1PVC4y4k=
+github.com/brave-intl/challenge-bypass-ristretto-ffi v0.0.0-20190717223301-f88d942ddfaf h1:ZAsT/fM7Kxipf3wtoY7xa2bpFmAxzYPhVJ3hUcSdTRI=
+github.com/brave-intl/challenge-bypass-ristretto-ffi v0.0.0-20190717223301-f88d942ddfaf/go.mod h1:I9sAUIQc7AvvUU0Ustl5WMTdqmlNjXsX6dRLnDNxXiE=
 github.com/brave-intl/challenge-bypass-ristretto-ffi v1.0.0-20190128173058-f0a50b88caf h1:wBIUqfMTQuLgFB0sdtRAtOMjc0lKjwgark2pB7Vo/Ls=
 github.com/brave-intl/challenge-bypass-ristretto-ffi v1.0.0-20190128173058-f0a50b88caf/go.mod h1:I9sAUIQc7AvvUU0Ustl5WMTdqmlNjXsX6dRLnDNxXiE=
 github.com/certifi/gocertifi v0.0.0-20180905225744-ee1a9a0726d2 h1:MmeatFT1pTPSVb4nkPmBFN/LRZ97vPjsFKsZrU3KKTs=
