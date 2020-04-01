@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,9 +11,11 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/brave-intl/bat-go/middleware"
 	"github.com/go-chi/chi"
 	chiware "github.com/go-chi/chi/middleware"
+	"github.com/jmoiron/sqlx"
 	"github.com/pressly/lg"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
@@ -47,16 +48,19 @@ type Server struct {
 	ListenPort   int    `json:"listen_port,omitempty"`
 	MaxTokens    int    `json:"max_tokens,omitempty"`
 	DbConfigPath string `json:"db_config_path"`
+	dynamo       *dynamodb.DynamoDB
+	dbConfig     DbConfig
+	db           *sqlx.DB
 
-	dbConfig DbConfig
-	db       *sql.DB
-	caches   map[string]CacheInterface
+	caches map[string]CacheInterface
 }
 
+// DefaultServer on port
 var DefaultServer = &Server{
 	ListenPort: 2416,
 }
 
+// LoadConfigFile loads a file into conf and returns
 func LoadConfigFile(filePath string) (Server, error) {
 	conf := *DefaultServer
 	data, err := ioutil.ReadFile(filePath)
@@ -70,16 +74,21 @@ func LoadConfigFile(filePath string) (Server, error) {
 	return conf, nil
 }
 
-var (
-	ErrEmptyDbConfigPath = errors.New("no db config path specified")
-)
-
+// InitDbConfig reads os environment and update conf
 func (c *Server) InitDbConfig() error {
-	conf := DbConfig{}
+	conf := DbConfig{
+		DefaultDaysBeforeExpiry: 7,
+		DefaultIssuerValidDays:  30,
+		MaxConnection:           100,
+	}
 
 	// Heroku style
 	if connectionURI := os.Getenv("DATABASE_URL"); connectionURI != "" {
 		conf.ConnectionURI = os.Getenv("DATABASE_URL")
+	}
+
+	if dynamodbEndpoint := os.Getenv("DYNAMODB_ENDPOINT"); dynamodbEndpoint != "" {
+		conf.DynamodbEndpoint = os.Getenv("DYNAMODB_ENDPOINT")
 	}
 
 	if maxConnection := os.Getenv("MAX_DB_CONNECTION"); maxConnection != "" {
@@ -88,11 +97,24 @@ func (c *Server) InitDbConfig() error {
 		}
 	}
 
+	if defaultDaysBeforeExpiry := os.Getenv("DEFAULT_DAYS_BEFORE_EXPIRY"); defaultDaysBeforeExpiry != "" {
+		if count, err := strconv.Atoi(defaultDaysBeforeExpiry); err == nil {
+			conf.DefaultDaysBeforeExpiry = count
+		}
+	}
+
+	if defaultIssuerValidDays := os.Getenv("DEFAULT_ISSUER_VALID_DAYS"); defaultIssuerValidDays != "" {
+		if count, err := strconv.Atoi(defaultIssuerValidDays); err == nil {
+			conf.DefaultIssuerValidDays = count
+		}
+	}
+
 	c.LoadDbConfig(conf)
 
 	return nil
 }
 
+// SetupLogger creates a logger to use
 func SetupLogger(ctx context.Context) (context.Context, *logrus.Logger) {
 	logger := logrus.New()
 
@@ -107,6 +129,8 @@ func SetupLogger(ctx context.Context) (context.Context, *logrus.Logger) {
 
 func (c *Server) setupRouter(ctx context.Context, logger *logrus.Logger) (context.Context, *chi.Mux) {
 	c.initDb()
+	c.initDynamo()
+	c.SetupCronTasks()
 
 	//govalidator.SetFieldsRequiredByDefault(true)
 
@@ -127,6 +151,7 @@ func (c *Server) setupRouter(ctx context.Context, logger *logrus.Logger) (contex
 	return ctx, r
 }
 
+// ListenAndServe listen to ports and mount handlers
 func (c *Server) ListenAndServe(ctx context.Context, logger *logrus.Logger) error {
 	addr := fmt.Sprintf(":%d", c.ListenPort)
 	srv := http.Server{Addr: addr, Handler: chi.ServerBaseContext(c.setupRouter(ctx, logger))}

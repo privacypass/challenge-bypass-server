@@ -30,12 +30,19 @@ services:
 
   postgres:
     container_name: postgres
-    image: postgres:10.4
+    image: postgres:11
     environment:
       - "POSTGRES_USER=btokens"
       - "POSTGRES_PASSWORD=password"
     networks:
       - cb
+  dynamodb:
+    container_name: dynamodb
+    image: amazon/dynamodb-local:1.12.0
+    networks: 
+      - cb
+    ports: 
+      - "8000:8000"
   challenge-bypass:
     container_name: challenge-bypass
     image: challenge-bypass-builder 
@@ -48,8 +55,13 @@ services:
     environment:
       - "SENTRY_DSN"
       - "DATABASE_URL=postgres://btokens:password@postgres/btokens?sslmode=disable"
+      - "DYNAMODB_ENDPOINT=http://dynamodb:8000"
+      - AWS_ACCESS_KEY_ID=dummy
+      - AWS_SECRET_ACCESS_KEY=dummy
+      - AWS_REGION=us-west-2
     depends_on:
       - postgres
+      - dynamodb
     networks:
       - cb
 
