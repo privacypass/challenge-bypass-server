@@ -21,6 +21,7 @@ RUN go build --ldflags '-extldflags "-static"' -o challenge-bypass-server main.g
 CMD ["/src/challenge-bypass-server"]
 
 FROM alpine:3.6
+RUN apt-get update && apt-get install -y ca-certificates
 COPY --from=go_builder /src/challenge-bypass-server /bin/
 COPY migrations /src/migrations
 EXPOSE 2416
