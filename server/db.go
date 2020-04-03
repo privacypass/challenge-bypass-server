@@ -275,14 +275,18 @@ func (c *Server) rotateIssuers() error {
 
 	tx := c.db.MustBegin()
 
+	var err error = nil
+
 	defer func() {
-		if err := tx.Rollback(); err != nil {
-			fmt.Println(err)
+		if err != nil {
+			tx.Rollback()
+			return
 		}
+		err = tx.Commit()
 	}()
 
 	fetchedIssuers := []issuer{}
-	err := tx.Select(
+	err = tx.Select(
 		&fetchedIssuers,
 		`SELECT * FROM issuers 
 			WHERE expires_at IS NOT NULL
@@ -335,10 +339,6 @@ func (c *Server) rotateIssuers() error {
 		); err != nil {
 			return err
 		}
-	}
-
-	if err := tx.Commit(); err != nil {
-		return err
 	}
 
 	return nil
