@@ -279,7 +279,7 @@ func (c *Server) rotateIssuers() error {
 
 	defer func() {
 		if err != nil {
-			tx.Rollback()
+			err = tx.Rollback()
 			return
 		}
 		err = tx.Commit()
