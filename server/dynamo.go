@@ -2,7 +2,6 @@ package server
 
 import (
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -88,7 +87,6 @@ func (c *Server) redeemTokenV2(issuer *Issuer, preimage *crypto.TokenPreimage, p
 	if err != nil {
 		return err
 	}
-	fmt.Println(av)
 
 	input := &dynamodb.PutItemInput{
 		Item:                av,
@@ -97,7 +95,6 @@ func (c *Server) redeemTokenV2(issuer *Issuer, preimage *crypto.TokenPreimage, p
 	}
 
 	_, err = c.dynamo.PutItem(input)
-	fmt.Println(err)
 	if err != nil {
 		if err, ok := err.(awserr.Error); ok && err.Code() == "ConditionalCheckFailedException" { // unique constraint violation
 			return errDuplicateRedemption

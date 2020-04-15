@@ -292,7 +292,6 @@ func (c *Server) rotateIssuers() error {
 			WHERE expires_at IS NOT NULL
 			AND rotated_at IS NULL
 			AND expires_at < NOW() + $1 * INTERVAL '1 day'
-			AND expires_at > NOW()
 		FOR UPDATE SKIP LOCKED`, cfg.DefaultDaysBeforeExpiry,
 	)
 	if err != nil {
