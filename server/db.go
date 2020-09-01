@@ -269,6 +269,30 @@ func (c *Server) fetchIssuers(issuerType string) (*[]Issuer, error) {
 	return &issuers, nil
 }
 
+func (c *Server) fetchAllIssuers() (*[]Issuer, error) {
+	fetchedIssuers := []issuer{}
+	err := c.db.Select(
+		&fetchedIssuers,
+		`SELECT *
+		FROM issuers
+		ORDER BY expires_at DESC NULLS LAST, created_at DESC`)
+	if err != nil {
+		return nil, err
+	}
+
+	issuers := []Issuer{}
+	for _, fetchedIssuer := range fetchedIssuers {
+		issuer, err := convertDBIssuer(fetchedIssuer)
+		if err != nil {
+			return nil, err
+		}
+
+		issuers = append(issuers, *issuer)
+	}
+
+	return &issuers, nil
+}
+
 // RotateIssuers is the function that rotates
 func (c *Server) rotateIssuers() error {
 	cfg := c.dbConfig

@@ -9,7 +9,7 @@ RUN cargo build --target=x86_64-unknown-linux-musl --features nightly
 FROM golang:1.13.1 as go_builder
 RUN apt-get update && apt-get install -y ca-certificates postgresql-client python-pip
 RUN pip install awscli --upgrade
-RUN go get -u github.com/golangci/golangci-lint/cmd/golangci-lint
+RUN curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s -- -b $(go env GOPATH)/bin latest
 RUN mkdir /src
 WORKDIR /src
 COPY go.mod .

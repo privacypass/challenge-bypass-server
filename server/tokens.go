@@ -198,67 +198,6 @@ func (c *Server) blindedTokenBulkRedeemHandler(w http.ResponseWriter, r *http.Re
 	return nil
 }
 
-func (c *Server) blindedTokenBulkRedeemHandler(w http.ResponseWriter, r *http.Request) *handlers.AppError {
-
-	var request BlindedTokenBulkRedeemRequest
-
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxRequestSize)).Decode(&request); err != nil {
-		return handlers.WrapError("Could not parse the request body", err)
-	}
-
-	tx, err := c.db.Begin()
-	if err != nil {
-		return handlers.WrapError("Could not start bulk token redemption db transaction", err)
-	}
-
-	for _, token := range request.Tokens {
-		issuer, appErr := c.getIssuer(token.Issuer)
-		if appErr != nil {
-			_ = tx.Rollback()
-			return appErr
-		}
-
-		if token.TokenPreimage == nil || token.Signature == nil {
-			_ = tx.Rollback()
-			return &handlers.AppError{
-				Message: "Missing preimage or signature",
-				Code:    http.StatusBadRequest,
-			}
-		}
-
-		if err := btd.VerifyTokenRedemption(token.TokenPreimage, token.Signature, request.Payload, []*crypto.SigningKey{issuer.SigningKey}); err != nil {
-			_ = tx.Rollback()
-			return handlers.WrapError("Could not verify that token redemption is valid", err)
-		}
-
-		if err := redeemTokenWithDB(tx, token.Issuer, token.TokenPreimage, request.Payload); err != nil {
-			_ = tx.Rollback()
-			if err == DuplicateRedemptionError {
-				return &handlers.AppError{
-					Message: err.Error(),
-					Code:    http.StatusConflict,
-				}
-			} else {
-				return &handlers.AppError{
-					Error:   err,
-					Message: "Could not mark token redemption",
-					Code:    http.StatusInternalServerError,
-				}
-			}
-		}
-	}
-	err = tx.Commit()
-	if err != nil {
-		return &handlers.AppError{
-			Error:   err,
-			Message: "Could not mark token redemption",
-			Code:    http.StatusInternalServerError,
-		}
-	}
-
-	return nil
-}
-
 func (c *Server) blindedTokenRedemptionHandler(w http.ResponseWriter, r *http.Request) *handlers.AppError {
 	if issuerID := chi.URLParam(r, "id"); issuerID != "" {
 		tokenID := chi.URLParam(r, "tokenId")
