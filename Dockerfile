@@ -7,8 +7,9 @@ RUN git checkout 1.0.0-pre.1
 RUN cargo build --target=x86_64-unknown-linux-musl --features nightly
 
 FROM golang:1.13.1 as go_builder
-RUN apt-get update && apt-get install -y postgresql-client
-RUN go get -u github.com/golangci/golangci-lint/cmd/golangci-lint
+RUN apt-get update && apt-get install -y ca-certificates postgresql-client python-pip
+RUN pip install awscli --upgrade
+RUN curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s -- -b $(go env GOPATH)/bin latest
 RUN mkdir /src
 WORKDIR /src
 COPY go.mod .
@@ -20,10 +21,14 @@ RUN go build --ldflags '-extldflags "-static"' -o challenge-bypass-server main.g
 CMD ["/src/challenge-bypass-server"]
 
 FROM alpine:3.6
+RUN apk update && apk add ca-certificates && rm -rf /var/cache/apk/*
 COPY --from=go_builder /src/challenge-bypass-server /bin/
 COPY migrations /src/migrations
 EXPOSE 2416
 ENV DATABASE_URL=
 ENV DBCONFIG="{}"
 ENV MAX_DB_CONNECTION=100
+ENV EXPIRATION_WINDOW=7
+ENV RENEWAL_WINDOW=30
+ENV DYNAMODB_ENDPOINT=
 CMD ["/bin/challenge-bypass-server"]

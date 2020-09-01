@@ -1,0 +1,14 @@
+POST http://localhost:2416/v1/issuer
+Content-Type: application/json
+# Authorization: Bearer {{token}}
+
+{
+    "name": "example_issuer",
+    "max_tokens": 500,
+    "expires_at": "2020-01-24T12:42:31Z"
+}
+
+###
+
+GET http://localhost:2416/v1/issuer/example_issuer
+Content-Type: application/json
