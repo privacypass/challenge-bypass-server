@@ -62,7 +62,7 @@ func loadConfigFile(filePath string) (Server, error) {
 	if err != nil {
 		return conf, err
 	}
-	err = json.Unmarshal(data, conf)
+	err = json.Unmarshal(data, &conf)
 	if err != nil {
 		return conf, err
 	}

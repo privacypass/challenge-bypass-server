@@ -8,6 +8,27 @@ import (
 	"testing"
 )
 
+func TestMarshalAndUnmarshalJSONP256(t *testing.T) {
+	curve := elliptic.P256()
+	_, x, y, err := elliptic.GenerateKey(curve, rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	P := &Point{Curve: curve, X: x, Y: y}
+	uBytes, err := P.MarshalJSON()
+	if err != nil {
+		t.Fatal(err)
+	}
+	Q := &Point{Curve: curve, X: nil, Y: nil}
+	err = Q.UnmarshalJSON(uBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if P.X.Cmp(Q.X) != 0 || P.Y.Cmp(Q.Y) != 0 {
+		t.Fatal("point came back different")
+	}
+}
+
 func TestUncompressedRoundTripP256(t *testing.T) {
 	curve := elliptic.P256()
 	_, x, y, err := elliptic.GenerateKey(curve, rand.Reader)
@@ -17,7 +38,10 @@ func TestUncompressedRoundTripP256(t *testing.T) {
 	P := &Point{Curve: curve, X: x, Y: y}
 	uBytes := P.Marshal()
 	Q := &Point{Curve: curve, X: nil, Y: nil}
-	Q.Unmarshal(curve, uBytes)
+	err = Q.Unmarshal(curve, uBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if P.X.Cmp(Q.X) != 0 || P.Y.Cmp(Q.Y) != 0 {
 		t.Fatal("point came back different")
 	}
