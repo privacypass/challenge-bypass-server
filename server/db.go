@@ -46,8 +46,7 @@ type issuer struct {
 }
 
 // Issuer of tokens
-type Issuer struct {
-	SigningKey   *crypto.SigningKey
+type Issuer struct {	SigningKey   *crypto.SigningKey
 	ID           string    `json:"id"`
 	IssuerType   string    `json:"issuer_type"`
 	IssuerCohort int       `json:"issuer_cohort"`
@@ -318,8 +317,7 @@ func (c *Server) fetchAllIssuers() (*[]Issuer, error) {
 		`SELECT *
 		FROM issuers
 		ORDER BY expires_at DESC NULLS LAST, created_at DESC`)
-	if err != nil {
-		c.Logger.Error("Failed to extract issuers from DB")
+	if err != nil {		c.Logger.Error("Failed to extract issuers from DB")
 		return nil, err
 	}
 
@@ -440,6 +438,7 @@ func (c *Server) createIssuer(issuerType string, issuerCohort int, maxTokens int
 		maxTokens,
 		expiresAt,
 	)
+	defer rows.Close()
 	if err != nil {
 		c.Logger.Error("Could not insert the new issuer into the DB")
 		return err
@@ -452,7 +451,12 @@ func (c *Server) createIssuer(issuerType string, issuerCohort int, maxTokens int
 		}
 	}
 
-	defer rows.Close()
+	if c.caches != nil {
+		if _, found := c.caches["issuers"].Get(issuerType); found {
+			c.caches["issuers"].Delete(issuerType)
+		}
+	}
+
 	return nil
 }
 
@@ -480,6 +484,7 @@ func redeemTokenWithDB(db Queryable, issuer string, preimage *crypto.TokenPreima
 	rows, err := db.Query(
 		`INSERT INTO redemptions(id, issuer_type, ts, payload) VALUES ($1, $2, NOW(), $3)`, preimageTxt, issuer, payload)
 	if err != nil {
+		defer rows.Close()
 		if err, ok := err.(*pq.Error); ok && err.Code == "23505" { // unique constraint violation
 			return errDuplicateRedemption
 		}
@@ -502,15 +507,13 @@ func (c *Server) fetchRedemption(issuerType, ID string) (*Redemption, error) {
 	queryTimer := prometheus.NewTimer(fetchRedemptionDBDuration)
 	rows, err := c.db.Query(
 		`SELECT id, issuer_id, ts, payload FROM redemptions WHERE id = $1 AND issuer_type = $2`, ID, issuerType)
-
+	defer rows.Close()
 	queryTimer.ObserveDuration()
 
 	if err != nil {
 		c.Logger.Error("Unable to perform the query")
 		return nil, err
 	}
-
-	defer rows.Close()
 
 	if rows.Next() {
 		var redemption = &Redemption{}

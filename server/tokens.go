@@ -203,6 +203,12 @@ func (c *Server) blindedTokenRedeemHandler(w http.ResponseWriter, r *http.Reques
 				Message: "Could not mark token redemption",
 				Code:    http.StatusInternalServerError,
 			}
+			return &handlers.AppError{
+				Error:   err,
+				Message: "Could not mark token redemption",
+				Code:    http.StatusInternalServerError,
+			}
+
 		}
 		err := json.NewEncoder(w).Encode(blindedTokenRedeemResponse{verifiedCohort})
 		if err != nil {
