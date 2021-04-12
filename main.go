@@ -49,7 +49,7 @@ func main() {
 	logger.WithFields(logrus.Fields{"prefix": "main"}).Info("Starting server")
 
 	srv.SetupCronTasks()
-	
+
 	err = srv.ListenAndServe(serverCtx, logger)
 
 	if err != nil {
