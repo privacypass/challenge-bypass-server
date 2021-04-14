@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	crypto "github.com/brave-intl/challenge-bypass-ristretto-ffi"
@@ -46,7 +47,8 @@ type issuer struct {
 }
 
 // Issuer of tokens
-type Issuer struct {	SigningKey   *crypto.SigningKey
+type Issuer struct {
+	SigningKey   *crypto.SigningKey
 	ID           string    `json:"id"`
 	IssuerType   string    `json:"issuer_type"`
 	IssuerCohort int       `json:"issuer_cohort"`
@@ -83,10 +85,10 @@ type CacheInterface interface {
 }
 
 var (
-	errIssuerNotFound      = errors.New("Issuer with the given name does not exist")
+	errIssuerNotFound       = errors.New("Issuer with the given name does not exist")
 	errIssuerCohortNotFound = errors.New("Issuer with the given name and cohort does not exist")
-	errDuplicateRedemption = errors.New("Duplicate Redemption")
-	errRedemptionNotFound  = errors.New("Redemption with the given id does not exist")
+	errDuplicateRedemption  = errors.New("Duplicate Redemption")
+	errRedemptionNotFound   = errors.New("Redemption with the given id does not exist")
 )
 
 // LoadDbConfig loads config into server variable
@@ -233,8 +235,9 @@ func (c *Server) fetchIssuer(issuerID string) (*Issuer, error) {
 }
 
 func (c *Server) fetchIssuersByCohort(issuerType string, issuerCohort int) (*[]Issuer, error) {
+	compositeCacheKey := issuerType + strconv.Itoa(issuerCohort)
 	if c.caches != nil {
-		if cached, found := c.caches["issuers"].Get(issuerType); found {
+		if cached, found := c.caches["issuers"].Get(compositeCacheKey); found {
 			return cached.(*[]Issuer), nil
 		}
 	}
@@ -265,7 +268,7 @@ func (c *Server) fetchIssuersByCohort(issuerType string, issuerCohort int) (*[]I
 	}
 
 	if c.caches != nil {
-		c.caches["issuers"].SetDefault(issuerType, issuers)
+		c.caches["issuers"].SetDefault(compositeCacheKey, issuers)
 	}
 
 	return &issuers, nil
@@ -317,7 +320,8 @@ func (c *Server) fetchAllIssuers() (*[]Issuer, error) {
 		`SELECT *
 		FROM issuers
 		ORDER BY expires_at DESC NULLS LAST, created_at DESC`)
-	if err != nil {		c.Logger.Error("Failed to extract issuers from DB")
+	if err != nil {
+		c.Logger.Error("Failed to extract issuers from DB")
 		return nil, err
 	}
 
