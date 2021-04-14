@@ -438,11 +438,11 @@ func (c *Server) createIssuer(issuerType string, issuerCohort int, maxTokens int
 		maxTokens,
 		expiresAt,
 	)
-	defer rows.Close()
 	if err != nil {
 		c.Logger.Error("Could not insert the new issuer into the DB")
 		return err
 	}
+	defer rows.Close()
 	queryTimer.ObserveDuration()
 
 	if c.caches != nil {
@@ -507,13 +507,13 @@ func (c *Server) fetchRedemption(issuerType, ID string) (*Redemption, error) {
 	queryTimer := prometheus.NewTimer(fetchRedemptionDBDuration)
 	rows, err := c.db.Query(
 		`SELECT id, issuer_id, ts, payload FROM redemptions WHERE id = $1 AND issuer_type = $2`, ID, issuerType)
-	defer rows.Close()
 	queryTimer.ObserveDuration()
 
 	if err != nil {
 		c.Logger.Error("Unable to perform the query")
 		return nil, err
 	}
+	defer rows.Close()
 
 	if rows.Next() {
 		var redemption = &Redemption{}
