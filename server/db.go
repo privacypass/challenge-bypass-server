@@ -449,15 +449,10 @@ func (c *Server) createIssuer(issuerType string, issuerCohort int, maxTokens int
 	defer rows.Close()
 	queryTimer.ObserveDuration()
 
+	compositeCacheKey := issuerType + strconv.Itoa(issuerCohort)
 	if c.caches != nil {
-		if _, found := c.caches["issuers"].Get(issuerType); found {
-			c.caches["issuers"].Delete(issuerType)
-		}
-	}
-
-	if c.caches != nil {
-		if _, found := c.caches["issuers"].Get(issuerType); found {
-			c.caches["issuers"].Delete(issuerType)
+		if _, found := c.caches["issuers"].Get(compositeCacheKey); found {
+			c.caches["issuers"].Delete(compositeCacheKey)
 		}
 	}
 
