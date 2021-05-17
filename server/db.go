@@ -442,12 +442,12 @@ func (c *Server) createIssuer(issuerType string, issuerCohort int, maxTokens int
 		maxTokens,
 		expiresAt,
 	)
-	defer rows.Close()
 	if err != nil {
 		c.Logger.Error("Could not insert the new issuer into the DB")
 		queryTimer.ObserveDuration()
 		return err
 	}
+	defer rows.Close()
 	queryTimer.ObserveDuration()
 
 	compositeCacheKey := issuerType + strconv.Itoa(issuerCohort)
