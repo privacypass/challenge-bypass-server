@@ -138,6 +138,7 @@ func (c *Server) initDb() {
 		c.caches = make(map[string]CacheInterface)
 		defaultDuration := time.Duration(cfg.CachingConfig.ExpirationSec) * time.Second
 		c.caches["issuers"] = cache.New(defaultDuration, 2*defaultDuration)
+		c.caches["issuer"] = cache.New(defaultDuration, 2*defaultDuration)
 		c.caches["redemptions"] = cache.New(defaultDuration, 2*defaultDuration)
 		c.caches["issuercohort"] = cache.New(defaultDuration, 2*defaultDuration)
 	}
