@@ -139,6 +139,7 @@ func (c *Server) initDb() {
 		defaultDuration := time.Duration(cfg.CachingConfig.ExpirationSec) * time.Second
 		c.caches["issuers"] = cache.New(defaultDuration, 2*defaultDuration)
 		c.caches["redemptions"] = cache.New(defaultDuration, 2*defaultDuration)
+		c.caches["issuercohort"] = cache.New(defaultDuration, 2*defaultDuration)
 	}
 }
 
@@ -237,7 +238,7 @@ func (c *Server) fetchIssuer(issuerID string) (*Issuer, error) {
 func (c *Server) fetchIssuersByCohort(issuerType string, issuerCohort int) (*[]Issuer, error) {
 	compositeCacheKey := issuerType + strconv.Itoa(issuerCohort)
 	if c.caches != nil {
-		if cached, found := c.caches["issuers"].Get(compositeCacheKey); found {
+		if cached, found := c.caches["issuercohort"].Get(compositeCacheKey); found {
 			return cached.(*[]Issuer), nil
 		}
 	}
@@ -268,7 +269,7 @@ func (c *Server) fetchIssuersByCohort(issuerType string, issuerCohort int) (*[]I
 	}
 
 	if c.caches != nil {
-		c.caches["issuers"].SetDefault(compositeCacheKey, issuers)
+		c.caches["issuercohort"].SetDefault(compositeCacheKey, issuers)
 	}
 
 	return &issuers, nil
@@ -452,8 +453,8 @@ func (c *Server) createIssuer(issuerType string, issuerCohort int, maxTokens int
 
 	compositeCacheKey := issuerType + strconv.Itoa(issuerCohort)
 	if c.caches != nil {
-		if _, found := c.caches["issuers"].Get(compositeCacheKey); found {
-			c.caches["issuers"].Delete(compositeCacheKey)
+		if _, found := c.caches["issuercohort"].Get(compositeCacheKey); found {
+			c.caches["issuercohort"].Delete(compositeCacheKey)
 		}
 	}
 
