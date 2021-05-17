@@ -30,6 +30,7 @@ func (c *Server) initDynamo() {
 func (c *Server) fetchRedemptionV2(issuer *Issuer, ID string) (*RedemptionV2, error) {
 	issuerUUID, err := uuid.FromString(issuer.ID)
 	if err != nil {
+		c.Logger.Error("Bad issuer id")
 		return nil, errors.New("Bad issuer id")
 	}
 
@@ -45,6 +46,7 @@ func (c *Server) fetchRedemptionV2(issuer *Issuer, ID string) (*RedemptionV2, er
 	}
 	result, err := c.dynamo.GetItem(input)
 	if err != nil {
+		c.Logger.Error("Unable to get item")
 		return nil, err
 	}
 
@@ -52,10 +54,12 @@ func (c *Server) fetchRedemptionV2(issuer *Issuer, ID string) (*RedemptionV2, er
 
 	err = dynamodbattribute.UnmarshalMap(result.Item, &redemption)
 	if err != nil {
+		c.Logger.Error("Unable to unmarshal redemption")
 		panic(err)
 	}
 
 	if redemption.IssuerID == "" || redemption.ID == "" {
+		c.Logger.Error("Redemption not found")
 		return nil, errRedemptionNotFound
 	}
 	return &redemption, nil
@@ -64,11 +68,13 @@ func (c *Server) fetchRedemptionV2(issuer *Issuer, ID string) (*RedemptionV2, er
 func (c *Server) redeemTokenV2(issuer *Issuer, preimage *crypto.TokenPreimage, payload string) error {
 	preimageTxt, err := preimage.MarshalText()
 	if err != nil {
+		c.Logger.Error("Error Marshalling preimage")
 		return err
 	}
 
 	issuerUUID, err := uuid.FromString(issuer.ID)
 	if err != nil {
+		c.Logger.Error("Bad issuer id")
 		return errors.New("Bad issuer id")
 	}
 
@@ -85,6 +91,7 @@ func (c *Server) redeemTokenV2(issuer *Issuer, preimage *crypto.TokenPreimage, p
 
 	av, err := dynamodbattribute.MarshalMap(redemption)
 	if err != nil {
+		c.Logger.Error("Error marshalling redemption")
 		return err
 	}
 
@@ -97,8 +104,10 @@ func (c *Server) redeemTokenV2(issuer *Issuer, preimage *crypto.TokenPreimage, p
 	_, err = c.dynamo.PutItem(input)
 	if err != nil {
 		if err, ok := err.(awserr.Error); ok && err.Code() == "ConditionalCheckFailedException" { // unique constraint violation
+			c.Logger.Error("Duplicate redemption")
 			return errDuplicateRedemption
 		}
+		c.Logger.Error("Error creating item")
 		return err
 	}
 

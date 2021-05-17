@@ -1,0 +1,1 @@
+ALTER TABLE issuers DROP COLUMN issuer_cohort;

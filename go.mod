@@ -13,6 +13,7 @@ require (
 	github.com/docker/go-units v0.4.0 // indirect
 	github.com/getsentry/raven-go v0.2.0
 	github.com/go-chi/chi v3.3.3+incompatible
+	github.com/gocql/gocql v0.0.0-20190301043612-f6df8288f9b4
 	github.com/gogo/protobuf v1.3.0 // indirect
 	github.com/golang-migrate/migrate/v4 v4.6.2
 	github.com/google/go-cmp v0.3.1 // indirect
@@ -21,9 +22,9 @@ require (
 	github.com/lib/pq v1.2.0
 	github.com/patrickmn/go-cache v2.1.0+incompatible
 	github.com/pressly/lg v1.1.1
-	github.com/rs/zerolog v1.19.0
 	github.com/prometheus/client_golang v1.1.0
 	github.com/robfig/cron/v3 v3.0.0
+	github.com/rs/zerolog v1.19.0
 	github.com/satori/go.uuid v1.2.0
 	github.com/sirupsen/logrus v1.4.2
 	github.com/stretchr/testify v1.4.0

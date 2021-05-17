@@ -48,6 +48,7 @@ type Server struct {
 	ListenPort   int    `json:"listen_port,omitempty"`
 	MaxTokens    int    `json:"max_tokens,omitempty"`
 	DbConfigPath string `json:"db_config_path"`
+	Logger		 *logrus.Logger `json:",omitempty"`
 	dynamo       *dynamodb.DynamoDB
 	dbConfig     DbConfig
 	db           *sqlx.DB
@@ -118,6 +119,10 @@ func (c *Server) InitDbConfig() error {
 func SetupLogger(ctx context.Context) (context.Context, *logrus.Logger) {
 	logger := logrus.New()
 
+	if os.Getenv("ENV") == "production" {
+		logger.SetLevel(logrus.WarnLevel)
+	}
+
 	//logger.Formatter = &logrus.JSONFormatter{}
 
 	// Redirect output from the standard logging package "log"
@@ -144,8 +149,13 @@ func (c *Server) setupRouter(ctx context.Context, logger *logrus.Logger) (contex
 		r.Use(middleware.RequestLogger(logger))
 	}
 
-	r.Mount("/v1/blindedToken", c.tokenRouter())
-	r.Mount("/v1/issuer", c.issuerRouter())
+	c.Logger = logger
+
+	r.Mount("/v1/blindedToken", c.tokenRouterV1())
+	r.Mount("/v1/issuer", c.issuerRouterV1())
+
+	r.Mount("/v2/blindedToken", c.tokenRouterV2())
+	r.Mount("/v2/issuer", c.issuerRouterV2())
 	r.Get("/metrics", middleware.Metrics())
 
 	return ctx, r

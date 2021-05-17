@@ -4,6 +4,7 @@ Content-Type: application/json
 
 {
     "name": "example_issuer",
+    "cohort": 1,
     "max_tokens": 500,
     "expires_at": "2020-01-24T12:42:31Z"
 }
