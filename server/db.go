@@ -466,6 +466,10 @@ type Queryable interface {
 	Query(query string, args ...interface{}) (*sql.Rows, error)
 }
 
+func (c *Server) RedeemToken(issuer *Issuer, preimage *crypto.TokenPreimage, payload string) error {
+	return c.redeemToken(issuer, preimage, payload)
+}
+
 func (c *Server) redeemToken(issuer *Issuer, preimage *crypto.TokenPreimage, payload string) error {
 	defer incrementCounter(redeemTokenCounter)
 	if issuer.Version == 1 {

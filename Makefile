@@ -22,3 +22,6 @@ docker:
 docker-release:
 	docker push brave/challenge-bypass:$$(git rev-parse --short HEAD)
 	docker push brave/challenge-bypass:latest
+
+generate-avro:
+	gogen-avro --package=generated ./avro/generated ./avro/schemas/*

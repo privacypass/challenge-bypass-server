@@ -33,19 +33,23 @@ type issuerFetchRequestV2 struct {
 	Cohort int `json:"cohort"`
 }
 
+func (c *Server) GetLatestIssuer(issuerType string, issuerCohort int) (*Issuer, *handlers.AppError) {
+	return c.getLatestIssuer(issuerType, issuerCohort)
+}
+
 func (c *Server) getLatestIssuer(issuerType string, issuerCohort int) (*Issuer, *handlers.AppError) {
 	issuer, err := c.fetchIssuersByCohort(issuerType, issuerCohort)
 	if err != nil {
 		if err == errIssuerCohortNotFound {
-			c.Logger.Error("Issuer with given cohort not found")
+			c.Logger.Error("Issuer with given type and cohort not found")
 			return nil, &handlers.AppError{
-				Message: "Issuer with given cohort not found",
+				Message: "Issuer with given type and cohort not found",
 				Code:    404,
 			}
 		}
 		c.Logger.Error("Error finding issuer")
 		return nil, &handlers.AppError{
-			Error:   err,
+			Cause:   err,
 			Message: "Error finding issuer",
 			Code:    500,
 		}
@@ -54,6 +58,14 @@ func (c *Server) getLatestIssuer(issuerType string, issuerCohort int) (*Issuer, 
 	return &(*issuer)[0], nil
 }
 
+func (c *Server) MustGetIssuers(issuerType string) *[]Issuer {
+	issuers, err := c.getIssuers(issuerType)
+	if err != nil {
+		c.Logger.Error(err)
+		panic(err)
+	}
+	return issuers
+}
 func (c *Server) getIssuers(issuerType string) (*[]Issuer, *handlers.AppError) {
 	issuer, err := c.fetchIssuers(issuerType)
 	if err != nil {
@@ -64,7 +76,7 @@ func (c *Server) getIssuers(issuerType string) (*[]Issuer, *handlers.AppError) {
 			}
 		}
 		return nil, &handlers.AppError{
-			Error:   err,
+			Cause:   err,
 			Message: "Error finding issuer",
 			Code:    500,
 		}
@@ -101,7 +113,7 @@ func (c *Server) issuerHandlerV2(w http.ResponseWriter, r *http.Request) *handle
 	var req issuerFetchRequestV2
 	if err := decoder.Decode(&req); err != nil {
 		c.Logger.Error("Could not parse the request body")
-		return handlers.WrapError("Could not parse the request body", err)
+		return handlers.WrapError(err, "Could not parse the request body", 400)
 	}
 
 	if issuerType := chi.URLParam(r, "type"); issuerType != "" {
@@ -129,7 +141,7 @@ func (c *Server) issuerGetAllHandler(w http.ResponseWriter, r *http.Request) *ha
 	issuers, appErr := c.fetchAllIssuers()
 	if appErr != nil {
 		return &handlers.AppError{
-			Error:   appErr,
+			Cause:   appErr,
 			Message: "Error getting issuers",
 			Code:    500,
 		}
@@ -158,7 +170,7 @@ func (c *Server) issuerCreateHandler(w http.ResponseWriter, r *http.Request) *ha
 	var req issuerCreateRequest
 	if err := decoder.Decode(&req); err != nil {
 		c.Logger.Error("Could not parse the request body")
-		return handlers.WrapError("Could not parse the request body", err)
+		return handlers.WrapError(err, "Could not parse the request body", 400)
 	}
 
 	if req.ExpiresAt != nil {
@@ -174,7 +186,7 @@ func (c *Server) issuerCreateHandler(w http.ResponseWriter, r *http.Request) *ha
 	if err := c.createIssuer(req.Name, req.Cohort, req.MaxTokens, req.ExpiresAt); err != nil {
 		log.Errorf("%s", err)
 		return &handlers.AppError{
-			Error:   err,
+			Cause:   err,
 			Message: "Could not create new issuer",
 			Code:    500,
 		}

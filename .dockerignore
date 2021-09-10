@@ -3,3 +3,4 @@ LICENSE
 README.md
 .env
 vendor
+*.sql

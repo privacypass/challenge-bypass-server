@@ -1,0 +1,31 @@
+{
+    "namespace": "brave.cbp",
+    "type": "record",
+    "doc": "Top level request containing the data to be processed, as well as any top level metadata for this message.",
+    "name": "RedeemResultSet",
+    "fields" : [
+        {"name": "request_id", "type": "string"},
+        {
+            "name": "data",
+            "type": {
+                "type": "array",
+                "items":{
+                    "namespace": "brave.cbp",
+                    "type": "record",
+                    "name": "RedeemResult",
+                    "fields": [
+                        {"name": "output", "type": "bytes"},
+                        {"name": "issuer_public_key", "type": "string"},
+                        {"name": "issuer_cohort", "type": "int"},
+                        {"name": "status", "type": {
+                            "name": "RedeemResultStatus",
+                            "type": "enum",
+                            "symbols": ["ok", "duplicate_redemption"]
+                        }},
+                        {"name": "associated_data", "type": "bytes", "doc": "contains METADATA"}
+                    ]
+                }
+            }
+        }
+    ]
+}

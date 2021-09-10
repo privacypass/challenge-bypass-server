@@ -1,0 +1,13 @@
+{
+    "namespace": "brave.cbp",
+    "type": "record",
+    "doc": "Top level request containing the data to be processed, as well as any top level metadata for this message.",
+    "name": "VerificationResult",
+    "fields" : [
+        {"name": "request_id", "type": "string"},
+        {"name": "associated_data", "type": "bytes", "doc": "contains METADATA"},
+        {"name": "blinded_token", "type": "bytes"},
+        {"name": "issuer_name", "type": "string"},
+        {"name": "issuer_cohort", "type": "string"}
+    ]
+}

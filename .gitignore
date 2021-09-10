@@ -3,3 +3,4 @@ _vendor*/
 vendor/
 Makefile
 .env
+*.sql
