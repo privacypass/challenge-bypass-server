@@ -22,12 +22,10 @@ func (c *Server) initDynamo() {
 	var config = &aws.Config{
 		Region:   aws.String("us-west-2"),
 		Endpoint: aws.String(c.dbConfig.DynamodbEndpoint),
-		 CredentialsChainVerboseErrors: aws.Bool(true),
 	}
 
 	if os.Getenv("ENV") != "production" {
 		config.DisableSSL = aws.Bool(true)
-		config.CredentialsChainVerboseErrors = aws.Bool(false)
 	}
 
 	svc := dynamodb.New(sess, config)
