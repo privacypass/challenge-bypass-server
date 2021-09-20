@@ -24,6 +24,8 @@ type RedeemResultStatus int32
 const (
 	RedeemResultStatusOk                   RedeemResultStatus = 0
 	RedeemResultStatusDuplicate_redemption RedeemResultStatus = 1
+	RedeemResultStatusUnverified           RedeemResultStatus = 2
+	RedeemResultStatusError                RedeemResultStatus = 3
 )
 
 func (e RedeemResultStatus) String() string {
@@ -32,6 +34,10 @@ func (e RedeemResultStatus) String() string {
 		return "ok"
 	case RedeemResultStatusDuplicate_redemption:
 		return "duplicate_redemption"
+	case RedeemResultStatusUnverified:
+		return "unverified"
+	case RedeemResultStatusError:
+		return "error"
 	}
 	return "unknown"
 }
@@ -46,6 +52,10 @@ func NewRedeemResultStatusValue(raw string) (r RedeemResultStatus, err error) {
 		return RedeemResultStatusOk, nil
 	case "duplicate_redemption":
 		return RedeemResultStatusDuplicate_redemption, nil
+	case "unverified":
+		return RedeemResultStatusUnverified, nil
+	case "error":
+		return RedeemResultStatusError, nil
 	}
 
 	return -1, fmt.Errorf("invalid value for RedeemResultStatus: '%s'", raw)

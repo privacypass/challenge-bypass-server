@@ -3,13 +3,13 @@ package kafka
 import (
 	"context"
 	"fmt"
+	"os"
+	"strings"
+	"time"
 	batgo_kafka "github.com/brave-intl/bat-go/utils/kafka"
 	"github.com/brave-intl/challenge-bypass-server/server"
 	"github.com/segmentio/kafka-go"
 	"github.com/sirupsen/logrus"
-	"os"
-	"strings"
-	"time"
 )
 
 var brokers []string
@@ -33,24 +33,26 @@ func StartConsumers(server *server.Server, logger *logrus.Logger) error {
 		TopicMapping{
 			Topic:       "request.redeem." + env + ".cbp",
 			ResultTopic: "result.redeem." + env + ".cbp",
-			Processor:   BlindedTokenRedeemHandler,
+			Processor:   SignedTokenRedeemHandler,
 			Group:       "cbpProcessors",
 		},
 		TopicMapping{
 			Topic:       "request.sign." + env + ".cbp",
 			ResultTopic: "result.sign." + env + ".cbp",
-			Processor:   BlindedTokenIssuerHandler,
+			Processor:   SignedBlindedTokenIssuerHandler,
 			Group:       "cbpProcessors",
 		},
 	}
 
 	for _, topicMapping := range topicMappings {
-		go func() {
-			consumer := newConsumer(topicMapping.Topic, topicMapping.Group, logger)
+		// This has to be outside the goroutine to ensure that each consumer gets
+		// different values.
+		go func(topicData TopicMapping) {
 			var (
 				failureCount = 0
 				failureLimit = 10
 			)
+			consumer := newConsumer(topicData.Topic, topicData.Group, logger)
 			for {
 				// `ReadMessage` blocks until the next event. Do not block main.
 				msg, err := consumer.ReadMessage(context.Background())
@@ -63,10 +65,9 @@ func StartConsumers(server *server.Server, logger *logrus.Logger) error {
 					continue
 				}
 				logger.Infof("Processing message")
-				go topicMapping.Processor(msg.Value, topicMapping.ResultTopic, server, logger)
-				return
+				go topicData.Processor(msg.Value, topicData.ResultTopic, server, logger)
 			}
-		}()
+		}(topicMapping)
 	}
 	return nil
 }

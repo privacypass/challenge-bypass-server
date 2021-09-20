@@ -23,19 +23,23 @@ import (
 var _ = fmt.Printf
 
 type SigningResult struct {
-	Output Bytes `json:"output"`
+	Signed_tokens []string `json:"signed_tokens"`
 
-	Issuer_public_key Bytes `json:"issuer_public_key"`
+	Issuer_public_key string `json:"issuer_public_key"`
+
+	Proof string `json:"proof"`
 
 	Status SigningResultStatus `json:"status"`
 	// contains METADATA
 	Associated_data Bytes `json:"associated_data"`
 }
 
-const SigningResultAvroCRC64Fingerprint = "\x8c\xc8\xccGQ\xed\xc6\x15"
+const SigningResultAvroCRC64Fingerprint = "!:\xad/\x80\x85\x98\xa9"
 
 func NewSigningResult() SigningResult {
 	r := SigningResult{}
+	r.Signed_tokens = make([]string, 0)
+
 	return r
 }
 
@@ -64,11 +68,15 @@ func DeserializeSigningResultFromSchema(r io.Reader, schema string) (SigningResu
 
 func writeSigningResult(r SigningResult, w io.Writer) error {
 	var err error
-	err = vm.WriteBytes(r.Output, w)
+	err = writeArrayString(r.Signed_tokens, w)
 	if err != nil {
 		return err
 	}
-	err = vm.WriteBytes(r.Issuer_public_key, w)
+	err = vm.WriteString(r.Issuer_public_key, w)
+	if err != nil {
+		return err
+	}
+	err = vm.WriteString(r.Proof, w)
 	if err != nil {
 		return err
 	}
@@ -88,7 +96,7 @@ func (r SigningResult) Serialize(w io.Writer) error {
 }
 
 func (r SigningResult) Schema() string {
-	return "{\"fields\":[{\"name\":\"output\",\"type\":\"bytes\"},{\"name\":\"issuer_public_key\",\"type\":\"bytes\"},{\"name\":\"status\",\"type\":{\"name\":\"SigningResultStatus\",\"symbols\":[\"ok\",\"invalid_issuer\"],\"type\":\"enum\"}},{\"doc\":\"contains METADATA\",\"name\":\"associated_data\",\"type\":\"bytes\"}],\"name\":\"brave.cbp.SigningResult\",\"type\":\"record\"}"
+	return "{\"fields\":[{\"name\":\"signed_tokens\",\"type\":{\"items\":{\"name\":\"signed_token\",\"type\":\"string\"},\"type\":\"array\"}},{\"name\":\"issuer_public_key\",\"type\":\"string\"},{\"name\":\"proof\",\"type\":\"string\"},{\"name\":\"status\",\"type\":{\"name\":\"SigningResultStatus\",\"symbols\":[\"ok\",\"invalid_issuer\",\"error\"],\"type\":\"enum\"}},{\"doc\":\"contains METADATA\",\"name\":\"associated_data\",\"type\":\"bytes\"}],\"name\":\"brave.cbp.SigningResult\",\"type\":\"record\"}"
 }
 
 func (r SigningResult) SchemaName() string {
@@ -107,12 +115,16 @@ func (_ SigningResult) SetUnionElem(v int64) { panic("Unsupported operation") }
 func (r *SigningResult) Get(i int) types.Field {
 	switch i {
 	case 0:
-		return &BytesWrapper{Target: &r.Output}
+		r.Signed_tokens = make([]string, 0)
+
+		return &ArrayStringWrapper{Target: &r.Signed_tokens}
 	case 1:
-		return &BytesWrapper{Target: &r.Issuer_public_key}
+		return &types.String{Target: &r.Issuer_public_key}
 	case 2:
-		return &SigningResultStatusWrapper{Target: &r.Status}
+		return &types.String{Target: &r.Proof}
 	case 3:
+		return &SigningResultStatusWrapper{Target: &r.Status}
+	case 4:
 		return &BytesWrapper{Target: &r.Associated_data}
 	}
 	panic("Unknown field index")
@@ -141,11 +153,15 @@ func (_ SigningResult) AvroCRC64Fingerprint() []byte {
 func (r SigningResult) MarshalJSON() ([]byte, error) {
 	var err error
 	output := make(map[string]json.RawMessage)
-	output["output"], err = json.Marshal(r.Output)
+	output["signed_tokens"], err = json.Marshal(r.Signed_tokens)
 	if err != nil {
 		return nil, err
 	}
 	output["issuer_public_key"], err = json.Marshal(r.Issuer_public_key)
+	if err != nil {
+		return nil, err
+	}
+	output["proof"], err = json.Marshal(r.Proof)
 	if err != nil {
 		return nil, err
 	}
@@ -168,18 +184,18 @@ func (r *SigningResult) UnmarshalJSON(data []byte) error {
 
 	var val json.RawMessage
 	val = func() json.RawMessage {
-		if v, ok := fields["output"]; ok {
+		if v, ok := fields["signed_tokens"]; ok {
 			return v
 		}
 		return nil
 	}()
 
 	if val != nil {
-		if err := json.Unmarshal([]byte(val), &r.Output); err != nil {
+		if err := json.Unmarshal([]byte(val), &r.Signed_tokens); err != nil {
 			return err
 		}
 	} else {
-		return fmt.Errorf("no value specified for output")
+		return fmt.Errorf("no value specified for signed_tokens")
 	}
 	val = func() json.RawMessage {
 		if v, ok := fields["issuer_public_key"]; ok {
@@ -194,6 +210,20 @@ func (r *SigningResult) UnmarshalJSON(data []byte) error {
 		}
 	} else {
 		return fmt.Errorf("no value specified for issuer_public_key")
+	}
+	val = func() json.RawMessage {
+		if v, ok := fields["proof"]; ok {
+			return v
+		}
+		return nil
+	}()
+
+	if val != nil {
+		if err := json.Unmarshal([]byte(val), &r.Proof); err != nil {
+			return err
+		}
+	} else {
+		return fmt.Errorf("no value specified for proof")
 	}
 	val = func() json.RawMessage {
 		if v, ok := fields["status"]; ok {

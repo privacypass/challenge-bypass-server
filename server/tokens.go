@@ -228,7 +228,7 @@ func (c *Server) blindedTokenBulkRedeemHandler(w http.ResponseWriter, r *http.Re
 	}
 
 	for _, token := range request.Tokens {
-		// todo: this code seems to be from an old version - we use the `redeemTokenWithDB`, and we have no tests, so I
+		// @TODO: this code seems to be from an old version - we use the `redeemTokenWithDB`, and we have no tests, so I
 		// assume that is no longer used, hence the usage of v1Cohort.
 		issuer, appErr := c.getLatestIssuer(token.Issuer, v1Cohort)
 

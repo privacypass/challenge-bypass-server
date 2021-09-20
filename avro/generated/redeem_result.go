@@ -23,8 +23,6 @@ import (
 var _ = fmt.Printf
 
 type RedeemResult struct {
-	Output Bytes `json:"output"`
-
 	Issuer_public_key string `json:"issuer_public_key"`
 
 	Issuer_cohort int32 `json:"issuer_cohort"`
@@ -34,7 +32,7 @@ type RedeemResult struct {
 	Associated_data Bytes `json:"associated_data"`
 }
 
-const RedeemResultAvroCRC64Fingerprint = "\x1c\xee\xb5k\xc0\xfcV\x1d"
+const RedeemResultAvroCRC64Fingerprint = "\xb5\xef\x1c${\xb7a\\"
 
 func NewRedeemResult() RedeemResult {
 	r := RedeemResult{}
@@ -66,10 +64,6 @@ func DeserializeRedeemResultFromSchema(r io.Reader, schema string) (RedeemResult
 
 func writeRedeemResult(r RedeemResult, w io.Writer) error {
 	var err error
-	err = vm.WriteBytes(r.Output, w)
-	if err != nil {
-		return err
-	}
 	err = vm.WriteString(r.Issuer_public_key, w)
 	if err != nil {
 		return err
@@ -94,7 +88,7 @@ func (r RedeemResult) Serialize(w io.Writer) error {
 }
 
 func (r RedeemResult) Schema() string {
-	return "{\"fields\":[{\"name\":\"output\",\"type\":\"bytes\"},{\"name\":\"issuer_public_key\",\"type\":\"string\"},{\"name\":\"issuer_cohort\",\"type\":\"int\"},{\"name\":\"status\",\"type\":{\"name\":\"RedeemResultStatus\",\"symbols\":[\"ok\",\"duplicate_redemption\"],\"type\":\"enum\"}},{\"doc\":\"contains METADATA\",\"name\":\"associated_data\",\"type\":\"bytes\"}],\"name\":\"brave.cbp.RedeemResult\",\"type\":\"record\"}"
+	return "{\"fields\":[{\"name\":\"issuer_public_key\",\"type\":\"string\"},{\"name\":\"issuer_cohort\",\"type\":\"int\"},{\"name\":\"status\",\"type\":{\"name\":\"RedeemResultStatus\",\"symbols\":[\"ok\",\"duplicate_redemption\",\"unverified\",\"error\"],\"type\":\"enum\"}},{\"doc\":\"contains METADATA\",\"name\":\"associated_data\",\"type\":\"bytes\"}],\"name\":\"brave.cbp.RedeemResult\",\"type\":\"record\"}"
 }
 
 func (r RedeemResult) SchemaName() string {
@@ -113,14 +107,12 @@ func (_ RedeemResult) SetUnionElem(v int64) { panic("Unsupported operation") }
 func (r *RedeemResult) Get(i int) types.Field {
 	switch i {
 	case 0:
-		return &BytesWrapper{Target: &r.Output}
-	case 1:
 		return &types.String{Target: &r.Issuer_public_key}
-	case 2:
+	case 1:
 		return &types.Int{Target: &r.Issuer_cohort}
-	case 3:
+	case 2:
 		return &RedeemResultStatusWrapper{Target: &r.Status}
-	case 4:
+	case 3:
 		return &BytesWrapper{Target: &r.Associated_data}
 	}
 	panic("Unknown field index")
@@ -149,10 +141,6 @@ func (_ RedeemResult) AvroCRC64Fingerprint() []byte {
 func (r RedeemResult) MarshalJSON() ([]byte, error) {
 	var err error
 	output := make(map[string]json.RawMessage)
-	output["output"], err = json.Marshal(r.Output)
-	if err != nil {
-		return nil, err
-	}
 	output["issuer_public_key"], err = json.Marshal(r.Issuer_public_key)
 	if err != nil {
 		return nil, err
@@ -179,20 +167,6 @@ func (r *RedeemResult) UnmarshalJSON(data []byte) error {
 	}
 
 	var val json.RawMessage
-	val = func() json.RawMessage {
-		if v, ok := fields["output"]; ok {
-			return v
-		}
-		return nil
-	}()
-
-	if val != nil {
-		if err := json.Unmarshal([]byte(val), &r.Output); err != nil {
-			return err
-		}
-	} else {
-		return fmt.Errorf("no value specified for output")
-	}
 	val = func() json.RawMessage {
 		if v, ok := fields["issuer_public_key"]; ok {
 			return v

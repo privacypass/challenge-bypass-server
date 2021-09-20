@@ -24,6 +24,7 @@ type SigningResultStatus int32
 const (
 	SigningResultStatusOk             SigningResultStatus = 0
 	SigningResultStatusInvalid_issuer SigningResultStatus = 1
+	SigningResultStatusError          SigningResultStatus = 2
 )
 
 func (e SigningResultStatus) String() string {
@@ -32,6 +33,8 @@ func (e SigningResultStatus) String() string {
 		return "ok"
 	case SigningResultStatusInvalid_issuer:
 		return "invalid_issuer"
+	case SigningResultStatusError:
+		return "error"
 	}
 	return "unknown"
 }
@@ -46,6 +49,8 @@ func NewSigningResultStatusValue(raw string) (r SigningResultStatus, err error) 
 		return SigningResultStatusOk, nil
 	case "invalid_issuer":
 		return SigningResultStatusInvalid_issuer, nil
+	case "error":
+		return SigningResultStatusError, nil
 	}
 
 	return -1, fmt.Errorf("invalid value for SigningResultStatus: '%s'", raw)

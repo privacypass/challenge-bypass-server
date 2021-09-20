@@ -29,7 +29,7 @@ type SigningResultSet struct {
 	Data []SigningResult `json:"data"`
 }
 
-const SigningResultSetAvroCRC64Fingerprint = "\xf7\xaaN\xe6\xc5\xf9\x8f\x00"
+const SigningResultSetAvroCRC64Fingerprint = "\xec\xc8\xd4]\xa7\a\xd1\x02"
 
 func NewSigningResultSet() SigningResultSet {
 	r := SigningResultSet{}
@@ -79,7 +79,7 @@ func (r SigningResultSet) Serialize(w io.Writer) error {
 }
 
 func (r SigningResultSet) Schema() string {
-	return "{\"doc\":\"Top level request containing the data to be processed, as well as any top level metadata for this message.\",\"fields\":[{\"name\":\"request_id\",\"type\":\"string\"},{\"name\":\"data\",\"type\":{\"items\":{\"fields\":[{\"name\":\"output\",\"type\":\"bytes\"},{\"name\":\"issuer_public_key\",\"type\":\"bytes\"},{\"name\":\"status\",\"type\":{\"name\":\"SigningResultStatus\",\"symbols\":[\"ok\",\"invalid_issuer\"],\"type\":\"enum\"}},{\"doc\":\"contains METADATA\",\"name\":\"associated_data\",\"type\":\"bytes\"}],\"name\":\"SigningResult\",\"namespace\":\"brave.cbp\",\"type\":\"record\"},\"type\":\"array\"}}],\"name\":\"brave.cbp.SigningResultSet\",\"type\":\"record\"}"
+	return "{\"doc\":\"Top level request containing the data to be processed, as well as any top level metadata for this message.\",\"fields\":[{\"name\":\"request_id\",\"type\":\"string\"},{\"name\":\"data\",\"type\":{\"items\":{\"fields\":[{\"name\":\"signed_tokens\",\"type\":{\"items\":{\"name\":\"signed_token\",\"type\":\"string\"},\"type\":\"array\"}},{\"name\":\"issuer_public_key\",\"type\":\"string\"},{\"name\":\"proof\",\"type\":\"string\"},{\"name\":\"status\",\"type\":{\"name\":\"SigningResultStatus\",\"symbols\":[\"ok\",\"invalid_issuer\",\"error\"],\"type\":\"enum\"}},{\"doc\":\"contains METADATA\",\"name\":\"associated_data\",\"type\":\"bytes\"}],\"name\":\"SigningResult\",\"namespace\":\"brave.cbp\",\"type\":\"record\"},\"type\":\"array\"}}],\"name\":\"brave.cbp.SigningResultSet\",\"type\":\"record\"}"
 }
 
 func (r SigningResultSet) SchemaName() string {

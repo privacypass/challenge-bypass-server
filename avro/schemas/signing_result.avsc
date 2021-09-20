@@ -14,12 +14,22 @@
                     "type": "record",
                     "name": "SigningResult",
                     "fields": [
-                        {"name": "output", "type": "bytes"},
-                        {"name": "issuer_public_key", "type": "bytes"},
+                        {
+                            "name": "signed_tokens",
+                            "type": {
+                                "type": "array",
+                                "items": {
+                                    "name": "signed_token",
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        {"name": "issuer_public_key", "type": "string"},
+                        {"name": "proof", "type": "string"},
                         {"name": "status", "type": {
                             "name": "SigningResultStatus",
                             "type": "enum",
-                            "symbols": ["ok", "invalid_issuer"]
+                            "symbols": ["ok", "invalid_issuer", "error"]
                         }},
                         {"name": "associated_data", "type": "bytes", "doc": "contains METADATA"}
                     ]

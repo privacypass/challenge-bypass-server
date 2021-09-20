@@ -15,7 +15,17 @@
                     "name": "SigningRequest",
                     "fields": [
                         {"name": "associated_data", "type": "bytes", "doc": "contains METADATA"},
-                        {"name": "blinded_token", "type": "bytes"},
+                        {
+                            "name": "blinded_tokens",
+                            "type": {
+                                "type": "array",
+                                "items": {
+                                    "name": "blinded_token",
+                                    "type": "string",
+                                    "namespace": "brave.cbp"
+                                }
+                            }
+                        },
                         {"name": "issuer_type", "type": "string"},
                         {"name": "issuer_cohort", "type": "int"}
                     ]

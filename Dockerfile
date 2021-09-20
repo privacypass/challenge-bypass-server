@@ -22,12 +22,19 @@ CMD ["/src/challenge-bypass-server"]
 
 FROM alpine:3.6
 RUN apk update && apk add ca-certificates && rm -rf /var/cache/apk/*
+RUN apk add --no-cache \
+        python3 \
+        py3-pip \
+    && pip3 install --upgrade pip \
+    && pip3 install \
+        awscli 
 COPY --from=go_builder /src/challenge-bypass-server /bin/
 COPY migrations /src/migrations
 EXPOSE 2416
 ENV DATABASE_URL=
 ENV DBCONFIG="{}"
 ENV MAX_DB_CONNECTION=100
+ENV AWS_REGION="us-west-2"
 ENV EXPIRATION_WINDOW=7
 ENV RENEWAL_WINDOW=30
 ENV DYNAMODB_ENDPOINT=

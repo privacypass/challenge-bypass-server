@@ -26,17 +26,19 @@ type SigningRequest struct {
 	// contains METADATA
 	Associated_data Bytes `json:"associated_data"`
 
-	Blinded_token Bytes `json:"blinded_token"`
+	Blinded_tokens []string `json:"blinded_tokens"`
 
 	Issuer_type string `json:"issuer_type"`
 
 	Issuer_cohort int32 `json:"issuer_cohort"`
 }
 
-const SigningRequestAvroCRC64Fingerprint = "\x02VdT$\xc8>\x14"
+const SigningRequestAvroCRC64Fingerprint = "\x8a\xfc\xfb\xa4\xcf\xfea\x06"
 
 func NewSigningRequest() SigningRequest {
 	r := SigningRequest{}
+	r.Blinded_tokens = make([]string, 0)
+
 	return r
 }
 
@@ -69,7 +71,7 @@ func writeSigningRequest(r SigningRequest, w io.Writer) error {
 	if err != nil {
 		return err
 	}
-	err = vm.WriteBytes(r.Blinded_token, w)
+	err = writeArrayString(r.Blinded_tokens, w)
 	if err != nil {
 		return err
 	}
@@ -89,7 +91,7 @@ func (r SigningRequest) Serialize(w io.Writer) error {
 }
 
 func (r SigningRequest) Schema() string {
-	return "{\"fields\":[{\"doc\":\"contains METADATA\",\"name\":\"associated_data\",\"type\":\"bytes\"},{\"name\":\"blinded_token\",\"type\":\"bytes\"},{\"name\":\"issuer_type\",\"type\":\"string\"},{\"name\":\"issuer_cohort\",\"type\":\"int\"}],\"name\":\"brave.cbp.SigningRequest\",\"type\":\"record\"}"
+	return "{\"fields\":[{\"doc\":\"contains METADATA\",\"name\":\"associated_data\",\"type\":\"bytes\"},{\"name\":\"blinded_tokens\",\"type\":{\"items\":{\"name\":\"blinded_token\",\"namespace\":\"brave.cbp\",\"type\":\"string\"},\"type\":\"array\"}},{\"name\":\"issuer_type\",\"type\":\"string\"},{\"name\":\"issuer_cohort\",\"type\":\"int\"}],\"name\":\"brave.cbp.SigningRequest\",\"type\":\"record\"}"
 }
 
 func (r SigningRequest) SchemaName() string {
@@ -110,7 +112,9 @@ func (r *SigningRequest) Get(i int) types.Field {
 	case 0:
 		return &BytesWrapper{Target: &r.Associated_data}
 	case 1:
-		return &BytesWrapper{Target: &r.Blinded_token}
+		r.Blinded_tokens = make([]string, 0)
+
+		return &ArrayStringWrapper{Target: &r.Blinded_tokens}
 	case 2:
 		return &types.String{Target: &r.Issuer_type}
 	case 3:
@@ -146,7 +150,7 @@ func (r SigningRequest) MarshalJSON() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	output["blinded_token"], err = json.Marshal(r.Blinded_token)
+	output["blinded_tokens"], err = json.Marshal(r.Blinded_tokens)
 	if err != nil {
 		return nil, err
 	}
@@ -183,18 +187,18 @@ func (r *SigningRequest) UnmarshalJSON(data []byte) error {
 		return fmt.Errorf("no value specified for associated_data")
 	}
 	val = func() json.RawMessage {
-		if v, ok := fields["blinded_token"]; ok {
+		if v, ok := fields["blinded_tokens"]; ok {
 			return v
 		}
 		return nil
 	}()
 
 	if val != nil {
-		if err := json.Unmarshal([]byte(val), &r.Blinded_token); err != nil {
+		if err := json.Unmarshal([]byte(val), &r.Blinded_tokens); err != nil {
 			return err
 		}
 	} else {
-		return fmt.Errorf("no value specified for blinded_token")
+		return fmt.Errorf("no value specified for blinded_tokens")
 	}
 	val = func() json.RawMessage {
 		if v, ok := fields["issuer_type"]; ok {

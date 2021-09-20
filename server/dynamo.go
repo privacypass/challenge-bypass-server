@@ -2,6 +2,7 @@ package server
 
 import (
 	"errors"
+	"os"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -18,11 +19,18 @@ func (c *Server) initDynamo() {
 		SharedConfigState: session.SharedConfigEnable,
 	}))
 
-	svc := dynamodb.New(sess, &aws.Config{
-		Region:                        aws.String("us-west-2"),
-		Endpoint:                      aws.String(c.dbConfig.DynamodbEndpoint),
-		CredentialsChainVerboseErrors: aws.Bool(true),
-	})
+	var config = &aws.Config{
+		Region:   aws.String("us-west-2"),
+		Endpoint: aws.String(c.dbConfig.DynamodbEndpoint),
+		 CredentialsChainVerboseErrors: aws.Bool(true),
+	}
+
+	if os.Getenv("ENV") != "production" {
+		config.DisableSSL = aws.Bool(true)
+		config.CredentialsChainVerboseErrors = aws.Bool(false)
+	}
+
+	svc := dynamodb.New(sess, config)
 
 	c.dynamo = svc
 }
@@ -110,6 +118,5 @@ func (c *Server) redeemTokenV2(issuer *Issuer, preimage *crypto.TokenPreimage, p
 		c.Logger.Error("Error creating item")
 		return err
 	}
-
 	return nil
 }
