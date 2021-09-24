@@ -42,8 +42,13 @@ func (c *Server) fetchRedemptionV2(issuer *Issuer, ID string) (*RedemptionV2, er
 
 	id := uuid.NewV5(issuerUUID, ID)
 
+	tableName := "redemptions"
+	if os.Getenv("dynamodb_table") != "" {
+		tableName = os.Getenv("dynamodb_table")
+	}
+
 	input := &dynamodb.GetItemInput{
-		TableName: aws.String("redemptions"),
+		TableName: aws.String(tableName),
 		Key: map[string]*dynamodb.AttributeValue{
 			"id": {
 				S: aws.String(id.String()),
