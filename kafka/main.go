@@ -4,13 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"strings"
+	"time"
+
 	batgo_kafka "github.com/brave-intl/bat-go/utils/kafka"
 	"github.com/brave-intl/challenge-bypass-server/server"
 	"github.com/segmentio/kafka-go"
 	"github.com/sirupsen/logrus"
-	"os"
-	"strings"
-	"time"
 )
 
 var brokers []string
@@ -140,6 +141,13 @@ func Emit(topic string, message []byte, logger *logrus.Logger) error {
  persist it to the file and environment variables expected by bat-go.
 */
 func kafkaCertHack(logger *logrus.Logger) {
+	caLocation := os.Getenv("KAFKA_SSL_CA_LOCATION")
+	if caLocation == "" {
+		err := os.Setenv("KAFKA_SSL_CA_LOCATION", "/etc/ssl/certs/ca-certificates.crt")
+		if err != nil {
+			logger.Errorf("Failed to set ca location environment variable: %e", err)
+		}
+	}
 	type CompositeCert struct {
 		key         string
 		certificate string
