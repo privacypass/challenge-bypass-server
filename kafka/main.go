@@ -88,7 +88,6 @@ func newConsumer(topic string, groupId string, logger *logrus.Logger) *kafka.Rea
 	}
 	logger.Infof("Subscribing to kafka topic %s on behalf of group %s using brokers %s", topic, groupId, brokers)
 	kafkaLogger := logrus.New()
-	kafkaLogger.SetOutput(os.Stdout)
 	reader := kafka.NewReader(kafka.ReaderConfig{
 		Brokers:        brokers,
 		Dialer:         dialer,
