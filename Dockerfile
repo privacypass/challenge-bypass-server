@@ -28,6 +28,7 @@ RUN apk add --no-cache \
     && pip3 install --upgrade pip \
     && pip3 install \
         awscli 
+RUN update-ca-certificates
 COPY --from=go_builder /src/challenge-bypass-server /bin/
 COPY migrations /src/migrations
 EXPOSE 2416
