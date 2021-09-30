@@ -93,6 +93,7 @@ func newConsumer(topics []string, groupId string, logger *zerolog.Logger) *kafka
 	}
 	logger.Info().Msg(fmt.Sprintf("Subscribing to kafka topic %s on behalf of group %s using brokers %s", topics, groupId, brokers))
 	kafkaLogger := logrus.New()
+	kafkaLogger.SetLevel(logrus.TraceLevel)
 	reader := kafka.NewReader(kafka.ReaderConfig{
 		Brokers:        brokers,
 		Dialer:         dialer,
