@@ -71,9 +71,9 @@ func main() {
 
 	go func() {
 		zeroLogger := zerolog.New(os.Stderr).With().Timestamp().Logger()
-		// if os.Getenv("ENV") == "local" {
-		// 	zeroLogger = zerolog.Output(zerolog.ConsoleWriter{Out: os.Stderr})
-		// }
+		if os.Getenv("ENV") != "production" {
+			zerolog.SetGlobalLevel(zerolog.TraceLevel)
+		}
 		err = kafka.StartConsumers(&srv, &zeroLogger)
 
 		if err != nil {
