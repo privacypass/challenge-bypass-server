@@ -83,7 +83,7 @@ func StartConsumers(server *server.Server, logger *zerolog.Logger) error {
 func newConsumer(topics []string, groupId string, logger *zerolog.Logger) *kafka.Reader {
 	var dialer *kafka.Dialer
 	brokers = strings.Split(os.Getenv("KAFKA_BROKERS"), ",")
-	kafkaCertHack(logger)
+	// kafkaCertHack(logger)
 	if os.Getenv("ENV") != "local" {
 		tlsDialer, _, err := batgo_kafka.TLSDialer()
 		dialer = tlsDialer
