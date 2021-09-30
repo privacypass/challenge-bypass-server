@@ -23,12 +23,12 @@ func SignedTokenRedeemHandler(
 	server *cbpServer.Server,
 	logger *zerolog.Logger,
 ) {
-    const (
-        OK = 0
-        DUPLICATE_REDEMPTION = 1
-        UNVERIFIED = 2
-        ERROR = 3
-    )
+	const (
+		OK                   = 0
+		DUPLICATE_REDEMPTION = 1
+		UNVERIFIED           = 2
+		ERROR                = 3
+	)
 	tokenRedeemRequestSet, err := avroSchema.DeserializeRedeemRequestSet(bytes.NewReader(data))
 	if err != nil {
 		logger.Error().Msg(fmt.Sprintf("Request %s: Failed Avro deserialization: %e", tokenRedeemRequestSet.Request_id, err))

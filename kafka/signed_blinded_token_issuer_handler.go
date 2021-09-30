@@ -23,11 +23,11 @@ func SignedBlindedTokenIssuerHandler(
 	server *cbpServer.Server,
 	logger *zerolog.Logger,
 ) {
-    const (
-        OK = 0
-        INVALID_ISSUER = 1
-        ERROR = 2
-    )
+	const (
+		OK             = 0
+		INVALID_ISSUER = 1
+		ERROR          = 2
+	)
 	blindedTokenRequestSet, err := avroSchema.DeserializeSigningRequestSet(bytes.NewReader(data))
 	if err != nil {
 		logger.Error().Msg(fmt.Sprintf("Request %s: Failed Avro deserialization: %e", blindedTokenRequestSet.Request_id, err))

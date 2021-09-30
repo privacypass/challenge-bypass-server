@@ -46,7 +46,12 @@ func StartConsumers(server *server.Server, logger *zerolog.Logger) error {
 			Group:       "cbpProcessors",
 		},
 	}
+	var topics []string
+	for _, topicMapping := range topicMappings {
+		topics = append(topics, topicMapping.Topic)
+	}
 
+	consumer := newConsumer(topics, "cbpProcessors", logger)
 	for _, topicMapping := range topicMappings {
 		// This has to be outside the goroutine to ensure that each consumer gets
 		// different values.
@@ -55,7 +60,6 @@ func StartConsumers(server *server.Server, logger *zerolog.Logger) error {
 				failureCount = 0
 				failureLimit = 10
 			)
-			consumer := newConsumer(topicData.Topic, topicData.Group, logger)
 			for {
 				// `ReadMessage` blocks until the next event. Do not block main.
 				msg, err := consumer.ReadMessage(context.Background())
@@ -76,7 +80,7 @@ func StartConsumers(server *server.Server, logger *zerolog.Logger) error {
 }
 
 // NewConsumer returns a Kafka reader configured for the given topic and group.
-func newConsumer(topic string, groupId string, logger *zerolog.Logger) *kafka.Reader {
+func newConsumer(topics []string, groupId string, logger *zerolog.Logger) *kafka.Reader {
 	var dialer *kafka.Dialer
 	brokers = strings.Split(os.Getenv("KAFKA_BROKERS"), ",")
 	kafkaCertHack(logger)
@@ -87,12 +91,12 @@ func newConsumer(topic string, groupId string, logger *zerolog.Logger) *kafka.Re
 			logger.Error().Msg(fmt.Sprintf("Failed to initialize TLS dialer: %e", err))
 		}
 	}
-	logger.Info().Msg(fmt.Sprintf("Subscribing to kafka topic %s on behalf of group %s using brokers %s", topic, groupId, brokers))
+	logger.Info().Msg(fmt.Sprintf("Subscribing to kafka topic %s on behalf of group %s using brokers %s", topics, groupId, brokers))
 	kafkaLogger := logrus.New()
 	reader := kafka.NewReader(kafka.ReaderConfig{
 		Brokers:        brokers,
 		Dialer:         dialer,
-		GroupTopics:    []string{topic},
+		GroupTopics:    topics,
 		GroupID:        groupId,
 		StartOffset:    -2,
 		ErrorLogger:    kafkaLogger,
