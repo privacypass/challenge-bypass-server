@@ -5,8 +5,6 @@
  *     redeem_result.avsc
  *     signing_request.avsc
  *     signing_result.avsc
- *     verification_request.avsc
- *     verification_result.avsc
  */
 package generated
 
@@ -30,12 +28,12 @@ type RedeemRequest struct {
 
 	Token_preimage string `json:"token_preimage"`
 
-	Signature_source string `json:"signature_source"`
+	Binding string `json:"binding"`
 
 	Signature string `json:"signature"`
 }
 
-const RedeemRequestAvroCRC64Fingerprint = "\x1b\u0600\x04\xab\x1e6I"
+const RedeemRequestAvroCRC64Fingerprint = "\x93D\x90fI\xba\xe06"
 
 func NewRedeemRequest() RedeemRequest {
 	r := RedeemRequest{}
@@ -79,7 +77,7 @@ func writeRedeemRequest(r RedeemRequest, w io.Writer) error {
 	if err != nil {
 		return err
 	}
-	err = vm.WriteString(r.Signature_source, w)
+	err = vm.WriteString(r.Binding, w)
 	if err != nil {
 		return err
 	}
@@ -95,7 +93,7 @@ func (r RedeemRequest) Serialize(w io.Writer) error {
 }
 
 func (r RedeemRequest) Schema() string {
-	return "{\"fields\":[{\"doc\":\"contains METADATA\",\"name\":\"associated_data\",\"type\":\"bytes\"},{\"name\":\"issuer_type\",\"type\":\"string\"},{\"name\":\"token_preimage\",\"type\":\"string\"},{\"name\":\"signature_source\",\"type\":\"string\"},{\"name\":\"signature\",\"type\":\"string\"}],\"name\":\"brave.cbp.RedeemRequest\",\"type\":\"record\"}"
+	return "{\"fields\":[{\"doc\":\"contains METADATA\",\"name\":\"associated_data\",\"type\":\"bytes\"},{\"name\":\"issuer_type\",\"type\":\"string\"},{\"name\":\"token_preimage\",\"type\":\"string\"},{\"name\":\"binding\",\"type\":\"string\"},{\"name\":\"signature\",\"type\":\"string\"}],\"name\":\"brave.cbp.RedeemRequest\",\"type\":\"record\"}"
 }
 
 func (r RedeemRequest) SchemaName() string {
@@ -120,7 +118,7 @@ func (r *RedeemRequest) Get(i int) types.Field {
 	case 2:
 		return &types.String{Target: &r.Token_preimage}
 	case 3:
-		return &types.String{Target: &r.Signature_source}
+		return &types.String{Target: &r.Binding}
 	case 4:
 		return &types.String{Target: &r.Signature}
 	}
@@ -162,7 +160,7 @@ func (r RedeemRequest) MarshalJSON() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	output["signature_source"], err = json.Marshal(r.Signature_source)
+	output["binding"], err = json.Marshal(r.Binding)
 	if err != nil {
 		return nil, err
 	}
@@ -223,18 +221,18 @@ func (r *RedeemRequest) UnmarshalJSON(data []byte) error {
 		return fmt.Errorf("no value specified for token_preimage")
 	}
 	val = func() json.RawMessage {
-		if v, ok := fields["signature_source"]; ok {
+		if v, ok := fields["binding"]; ok {
 			return v
 		}
 		return nil
 	}()
 
 	if val != nil {
-		if err := json.Unmarshal([]byte(val), &r.Signature_source); err != nil {
+		if err := json.Unmarshal([]byte(val), &r.Binding); err != nil {
 			return err
 		}
 	} else {
-		return fmt.Errorf("no value specified for signature_source")
+		return fmt.Errorf("no value specified for binding")
 	}
 	val = func() json.RawMessage {
 		if v, ok := fields["signature"]; ok {

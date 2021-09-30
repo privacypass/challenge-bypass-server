@@ -5,8 +5,6 @@
  *     redeem_result.avsc
  *     signing_request.avsc
  *     signing_result.avsc
- *     verification_request.avsc
- *     verification_result.avsc
  */
 package generated
 

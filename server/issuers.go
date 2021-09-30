@@ -34,10 +34,6 @@ type issuerFetchRequestV2 struct {
 }
 
 func (c *Server) GetLatestIssuer(issuerType string, issuerCohort int) (*Issuer, *handlers.AppError) {
-	return c.getLatestIssuer(issuerType, issuerCohort)
-}
-
-func (c *Server) getLatestIssuer(issuerType string, issuerCohort int) (*Issuer, *handlers.AppError) {
 	issuer, err := c.fetchIssuersByCohort(issuerType, issuerCohort)
 	if err != nil {
 		if err == errIssuerCohortNotFound {
@@ -58,13 +54,13 @@ func (c *Server) getLatestIssuer(issuerType string, issuerCohort int) (*Issuer, 
 	return &(*issuer)[0], nil
 }
 
-func (c *Server) MustGetIssuers(issuerType string) *[]Issuer {
+func (c *Server) GetIssuers(issuerType string) (*[]Issuer, error) {
 	issuers, err := c.getIssuers(issuerType)
 	if err != nil {
 		c.Logger.Error(err)
-		panic(err)
+		return nil, err
 	}
-	return issuers
+	return issuers, nil
 }
 func (c *Server) getIssuers(issuerType string) (*[]Issuer, *handlers.AppError) {
 	issuer, err := c.fetchIssuers(issuerType)
@@ -88,7 +84,7 @@ func (c *Server) issuerHandlerV1(w http.ResponseWriter, r *http.Request) *handle
 	defer closers.Panic(r.Body)
 
 	if issuerType := chi.URLParam(r, "type"); issuerType != "" {
-		issuer, appErr := c.getLatestIssuer(issuerType, v1Cohort)
+		issuer, appErr := c.GetLatestIssuer(issuerType, v1Cohort)
 		if appErr != nil {
 			return appErr
 		}
@@ -117,7 +113,7 @@ func (c *Server) issuerHandlerV2(w http.ResponseWriter, r *http.Request) *handle
 	}
 
 	if issuerType := chi.URLParam(r, "type"); issuerType != "" {
-		issuer, appErr := c.getLatestIssuer(issuerType, req.Cohort)
+		issuer, appErr := c.GetLatestIssuer(issuerType, req.Cohort)
 		if appErr != nil {
 			return appErr
 		}

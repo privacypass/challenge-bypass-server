@@ -11,6 +11,7 @@ import (
 	"github.com/brave-intl/challenge-bypass-server/kafka"
 	"github.com/brave-intl/challenge-bypass-server/server"
 	raven "github.com/getsentry/raven-go"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/sirupsen/logrus"
 )
@@ -69,11 +70,15 @@ func main() {
 	srv.SetupCronTasks()
 
 	go func() {
-		err = kafka.StartConsumers(&srv, logger)
+		zeroLogger := zerolog.New(os.Stderr).With().Timestamp().Logger()
+		// if os.Getenv("ENV") == "local" {
+		// 	zeroLogger = zerolog.Output(zerolog.ConsoleWriter{Out: os.Stderr})
+		// }
+		err = kafka.StartConsumers(&srv, &zeroLogger)
 
 		if err != nil {
 			raven.CaptureErrorAndWait(err, nil)
-			logger.Error(err)
+			zeroLogger.Error().Err(err).Msg("")
 			return
 		}
 	}()

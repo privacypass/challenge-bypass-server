@@ -80,7 +80,7 @@ func (c *Server) BlindedTokenIssuerHandlerV2(w http.ResponseWriter, r *http.Requ
 			}
 		}
 
-		issuer, appErr := c.getLatestIssuer(issuerType, request.IssuerCohort)
+		issuer, appErr := c.GetLatestIssuer(issuerType, request.IssuerCohort)
 		if appErr != nil {
 			return appErr
 		}
@@ -106,7 +106,7 @@ func (c *Server) BlindedTokenIssuerHandlerV2(w http.ResponseWriter, r *http.Requ
 // Old endpoint, that always handles tokens with v1cohort
 func (c *Server) blindedTokenIssuerHandler(w http.ResponseWriter, r *http.Request) *handlers.AppError {
 	if issuerType := chi.URLParam(r, "type"); issuerType != "" {
-		issuer, appErr := c.getLatestIssuer(issuerType, v1Cohort)
+		issuer, appErr := c.GetLatestIssuer(issuerType, v1Cohort)
 		if appErr != nil {
 			return appErr
 		}
@@ -230,7 +230,7 @@ func (c *Server) blindedTokenBulkRedeemHandler(w http.ResponseWriter, r *http.Re
 	for _, token := range request.Tokens {
 		// @TODO: this code seems to be from an old version - we use the `redeemTokenWithDB`, and we have no tests, so I
 		// assume that is no longer used, hence the usage of v1Cohort.
-		issuer, appErr := c.getLatestIssuer(token.Issuer, v1Cohort)
+		issuer, appErr := c.GetLatestIssuer(token.Issuer, v1Cohort)
 
 		if appErr != nil {
 			_ = tx.Rollback()

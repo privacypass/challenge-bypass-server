@@ -10,13 +10,14 @@ import (
 
 	batgo_kafka "github.com/brave-intl/bat-go/utils/kafka"
 	"github.com/brave-intl/challenge-bypass-server/server"
+	"github.com/rs/zerolog"
 	"github.com/segmentio/kafka-go"
 	"github.com/sirupsen/logrus"
 )
 
 var brokers []string
 
-type Processor func([]byte, string, *server.Server, *logrus.Logger)
+type Processor func([]byte, string, *server.Server, *zerolog.Logger)
 
 type TopicMapping struct {
 	Topic       string
@@ -25,22 +26,22 @@ type TopicMapping struct {
 	Group       string
 }
 
-func StartConsumers(server *server.Server, logger *logrus.Logger) error {
+func StartConsumers(server *server.Server, logger *zerolog.Logger) error {
 	env := os.Getenv("ENV")
 	if env == "" {
 		env = "development"
 	}
-	logger.Infof("Starting %s Kafka consumers", env)
+	logger.Info().Msg(fmt.Sprintf("Starting %s Kafka consumers", env))
 	topicMappings := []TopicMapping{
 		TopicMapping{
-			Topic:       "request.redeem." + env + ".cbp",
-			ResultTopic: "result.redeem." + env + ".cbp",
+			Topic:       "request.redeem.v1." + env + ".cbp",
+			ResultTopic: "result.redeem.v1." + env + ".cbp",
 			Processor:   SignedTokenRedeemHandler,
 			Group:       "cbpProcessors",
 		},
 		TopicMapping{
-			Topic:       "request.sign." + env + ".cbp",
-			ResultTopic: "result.sign." + env + ".cbp",
+			Topic:       "request.sign.v1." + env + ".cbp",
+			ResultTopic: "result.sign.v1." + env + ".cbp",
 			Processor:   SignedBlindedTokenIssuerHandler,
 			Group:       "cbpProcessors",
 		},
@@ -59,14 +60,14 @@ func StartConsumers(server *server.Server, logger *logrus.Logger) error {
 				// `ReadMessage` blocks until the next event. Do not block main.
 				msg, err := consumer.ReadMessage(context.Background())
 				if err != nil {
-					logger.Error(err.Error())
+					logger.Error().Msg(err.Error())
 					if failureCount > failureLimit {
 						break
 					}
 					failureCount++
 					continue
 				}
-				logger.Infof("Processing message")
+				logger.Info().Msg("Processing message")
 				go topicData.Processor(msg.Value, topicData.ResultTopic, server, logger)
 			}
 		}(topicMapping)
@@ -75,7 +76,7 @@ func StartConsumers(server *server.Server, logger *logrus.Logger) error {
 }
 
 // NewConsumer returns a Kafka reader configured for the given topic and group.
-func newConsumer(topic string, groupId string, logger *logrus.Logger) *kafka.Reader {
+func newConsumer(topic string, groupId string, logger *zerolog.Logger) *kafka.Reader {
 	var dialer *kafka.Dialer
 	brokers = strings.Split(os.Getenv("KAFKA_BROKERS"), ",")
 	kafkaCertHack(logger)
@@ -83,10 +84,10 @@ func newConsumer(topic string, groupId string, logger *logrus.Logger) *kafka.Rea
 		tlsDialer, _, err := batgo_kafka.TLSDialer()
 		dialer = tlsDialer
 		if err != nil {
-			logger.Errorf("Failed to initialize TLS dialer: %e", err)
+			logger.Error().Msg(fmt.Sprintf("Failed to initialize TLS dialer: %e", err))
 		}
 	}
-	logger.Infof("Subscribing to kafka topic %s on behalf of group %s using brokers %s", topic, groupId, brokers)
+	logger.Info().Msg(fmt.Sprintf("Subscribing to kafka topic %s on behalf of group %s using brokers %s", topic, groupId, brokers))
 	kafkaLogger := logrus.New()
 	reader := kafka.NewReader(kafka.ReaderConfig{
 		Brokers:        brokers,
@@ -104,8 +105,8 @@ func newConsumer(topic string, groupId string, logger *logrus.Logger) *kafka.Rea
 }
 
 // Emit sends a message over the Kafka interface.
-func Emit(topic string, message []byte, logger *logrus.Logger) error {
-	logger.Infof("Beginning data emission for topic %s", topic)
+func Emit(topic string, message []byte, logger *zerolog.Logger) error {
+	logger.Info().Msg(fmt.Sprintf("Beginning data emission for topic %s", topic))
 	partition := 0
 
 	if len(brokers) < 1 {
@@ -113,7 +114,7 @@ func Emit(topic string, message []byte, logger *logrus.Logger) error {
 	}
 	conn, err := kafka.DialLeader(context.Background(), "tcp", brokers[0], topic, partition)
 	if err != nil {
-		logger.Fatal("Failed to dial leader:", err)
+		logger.Error().Msg(fmt.Sprintf("Failed to dial leader: %e", err))
 		return err
 	}
 
@@ -122,15 +123,15 @@ func Emit(topic string, message []byte, logger *logrus.Logger) error {
 		kafka.Message{Value: []byte(message)},
 	)
 	if err != nil {
-		logger.Fatal("Failed to write messages:", err)
+		logger.Error().Msg(fmt.Sprintf("Failed to write messages: %e", err))
 		return err
 	}
 
 	if err := conn.Close(); err != nil {
-		logger.Fatal("Failed to close writer:", err)
+		logger.Error().Msg(fmt.Sprintf("Failed to close writer: %e", err))
 		return err
 	}
-	logger.Info("Data emitted")
+	logger.Info().Msg("Data emitted")
 	return nil
 }
 
@@ -139,12 +140,12 @@ func Emit(topic string, message []byte, logger *logrus.Logger) error {
  definition sets Kafka cert information via a single JSON variable. We parse that and
  persist it to the file and environment variables expected by bat-go.
 */
-func kafkaCertHack(logger *logrus.Logger) {
+func kafkaCertHack(logger *zerolog.Logger) {
 	caLocation := os.Getenv("KAFKA_SSL_CA_LOCATION")
 	if caLocation == "" {
 		err := os.Setenv("KAFKA_SSL_CA_LOCATION", "/etc/ssl/certs/ca-certificates.crt")
 		if err != nil {
-			logger.Errorf("Failed to set ca location environment variable: %e", err)
+			logger.Error().Msg(fmt.Sprintf("Failed to set ca location environment variable: %e", err))
 		}
 	}
 	type CompositeCert struct {
@@ -156,22 +157,22 @@ func kafkaCertHack(logger *logrus.Logger) {
 	if compositeCertString != "" {
 		err := json.Unmarshal([]byte(compositeCertString), &compositeCert)
 		if err != nil {
-			logger.Errorf("Failed to unmarshal KAFKA_SSL_CERTIFICATE. %e", err)
+			logger.Error().Msg(fmt.Sprintf("Failed to unmarshal KAFKA_SSL_CERTIFICATE. %e", err))
 		} else {
 			if err := os.WriteFile("/etc/kafka.key", []byte(compositeCert.key), 0666); err != nil {
-				logger.Error(err)
+				logger.Error().Err(err).Msg("")
 			} else {
 				err = os.Setenv("KAFKA_SSL_KEY_LOCATION", "/etc/kafka.key")
 				if err != nil {
-					logger.Errorf("Failed to set key location environment variable: %e", err)
+					logger.Error().Msg(fmt.Sprintf("Failed to set key location environment variable: %e", err))
 				}
 			}
 			if err := os.WriteFile("/etc/kafka.cert", []byte(compositeCert.certificate), 0666); err != nil {
-				logger.Error(err)
+				logger.Error().Err(err).Msg("")
 			} else {
 				err = os.Setenv("KAFKA_SSL_CERTIFICATE_LOCATION", "/etc/kafka.cert")
 				if err != nil {
-					logger.Errorf("Failed to set certificate location environment variable: %e", err)
+					logger.Error().Msg(fmt.Sprintf("Failed to set certificate location environment variable: %e", err))
 				}
 			}
 		}
