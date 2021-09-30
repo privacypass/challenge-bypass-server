@@ -33,6 +33,11 @@ func SignedBlindedTokenIssuerHandler(
 		logger.Error().Msg(fmt.Sprintf("Request %s: Failed Avro deserialization: %e", blindedTokenRequestSet.Request_id, err))
 	}
 	var blindedTokenResults []avroSchema.SigningResult
+	if len(blindedTokenRequestSet.Data) < 1 {
+		message := "Data array unexpectedly contained more than a single message. This array is intended to make future extension easier, but no more than a single value is currently expected."
+		logger.Error().Msg(message)
+		panic(message)
+	}
 	for _, request := range blindedTokenRequestSet.Data {
 		if request.Blinded_tokens == nil {
 			logger.Error().Msg(fmt.Sprintf("Request %s: Empty request", blindedTokenRequestSet.Request_id))
