@@ -20,14 +20,9 @@ COPY . .
 RUN go build --ldflags '-extldflags "-static"' -o challenge-bypass-server main.go
 CMD ["/src/challenge-bypass-server"]
 
-FROM alpine:3.14
-RUN apk update && apk add ca-certificates && rm -rf /var/cache/apk/*
-RUN apk add --no-cache \
-        python3 \
-        py3-pip \
-    && pip3 install --upgrade pip \
-    && pip3 install \
-        awscli 
+FROM ubuntu
+ARG DEBIAN_FRONTEND=noninteractive
+RUN apt update && apt install -y ca-certificates awscli && rm -rf /var/cache/apk/*
 RUN update-ca-certificates
 COPY --from=go_builder /src/challenge-bypass-server /bin/
 COPY migrations /src/migrations
