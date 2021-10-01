@@ -85,8 +85,8 @@ func newConsumer(topics []string, groupId string, logger *zerolog.Logger) *kafka
 	var dialer *kafka.Dialer
 	brokers = strings.Split(os.Getenv("KAFKA_BROKERS"), ",")
 	kafkaCertHack(logger)
-	//compositeCertString := os.Getenv("KAFKA_SSL_CERTIFICATE")
-	//os.Setenv("KAFKA_SSL_CERTIFICATE", strings.Replace(compositeCertString, `\n`, "\\n", -1))
+	compositeCertString := os.Getenv("KAFKA_SSL_CERTIFICATE")
+	os.Setenv("KAFKA_SSL_CERTIFICATE", strings.Replace(compositeCertString, "\\", "", -1))
 	if os.Getenv("ENV") != "local" {
 		tlsDialer, _, err := batgo_kafka.TLSDialer()
 		dialer = tlsDialer
