@@ -189,5 +189,6 @@ func kafkaCertHack(logger *zerolog.Logger) {
 				}
 			}
 		}
+		os.Setenv("KAFKA_SSL_CERTIFICATE", "")
 	}
 }
