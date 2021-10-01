@@ -166,7 +166,9 @@ func kafkaCertHack(logger *zerolog.Logger) {
 	logger.Trace().Msg(fmt.Sprintf("KAFKA: %s", compositeCertString))
 	if compositeCertString != "" {
 		err := json.Unmarshal([]byte(compositeCertString), &compositeCert)
-		logger.Trace().Msg(fmt.Sprintf("COMPPOSITE: %#v", compositeCert))
+		logger.Trace().Msg(fmt.Sprintf("COMPOSITE: %#v", compositeCert))
+		logger.Trace().Msg(fmt.Sprintf("COMPOSITE KEY: %s", compositeCert.Key))
+		logger.Trace().Msg(fmt.Sprintf("COMPOSITE CERT: %s", compositeCert.Certificate))
 		if err != nil {
 			logger.Error().Msg(fmt.Sprintf("Failed to unmarshal KAFKA_SSL_CERTIFICATE. %e", err))
 		} else {
