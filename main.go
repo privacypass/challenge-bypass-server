@@ -70,7 +70,7 @@ func main() {
 	srv.SetupCronTasks()
 
 	go func() {
-		zeroLogger := zerolog.New(os.Stderr).With().Timestamp().Logger()
+		zeroLogger := zerolog.New(os.Stderr).With().Timestamp().Caller().Logger()
 		if os.Getenv("ENV") != "production" {
 			zerolog.SetGlobalLevel(zerolog.TraceLevel)
 		}

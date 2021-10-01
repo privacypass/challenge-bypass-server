@@ -52,29 +52,29 @@ func StartConsumers(server *server.Server, logger *zerolog.Logger) error {
 	}
 
 	consumer := newConsumer(topics, "cbpProcessors", logger)
-	for _, topicMapping := range topicMappings {
-		// This has to be outside the goroutine to ensure that each consumer gets
-		// different values.
-		go func(topicData TopicMapping) {
-			var (
-				failureCount = 0
-				failureLimit = 10
-			)
-			for {
-				// `ReadMessage` blocks until the next event. Do not block main.
-				msg, err := consumer.ReadMessage(context.Background())
-				if err != nil {
-					logger.Error().Msg(err.Error())
-					if failureCount > failureLimit {
-						break
-					}
-					failureCount++
-					continue
-				}
-				logger.Info().Msg("Processing message")
-				go topicData.Processor(msg.Value, topicData.ResultTopic, server, logger)
+	// This has to be outside the goroutine to ensure that each consumer gets
+	// different values.
+	var (
+		failureCount = 0
+		failureLimit = 10
+	)
+	for {
+		// `ReadMessage` blocks until the next event. Do not block main.
+		msg, err := consumer.ReadMessage(context.Background())
+		if err != nil {
+			logger.Error().Msg(err.Error())
+			if failureCount > failureLimit {
+				break
 			}
-		}(topicMapping)
+			failureCount++
+			continue
+		}
+		logger.Info().Msg(fmt.Sprintf("Processing message for topic %s", msg.Topic))
+		for _, topicMapping := range topicMappings {
+			if msg.Topic == topicMapping.Topic {
+				topicMapping.Processor(msg.Value, topicMapping.ResultTopic, server, logger)
+			}
+		}
 	}
 	return nil
 }
