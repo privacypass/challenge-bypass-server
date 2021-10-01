@@ -20,7 +20,7 @@ COPY . .
 RUN go build --ldflags '-extldflags "-static"' -o challenge-bypass-server main.go
 CMD ["/src/challenge-bypass-server"]
 
-FROM alpine:3.6
+FROM alpine:3.14
 RUN apk update && apk add ca-certificates && rm -rf /var/cache/apk/*
 RUN apk add --no-cache \
         python3 \
