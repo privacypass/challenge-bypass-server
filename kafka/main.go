@@ -52,8 +52,6 @@ func StartConsumers(server *server.Server, logger *zerolog.Logger) error {
 	}
 
 	consumer := newConsumer(topics, "cbpProcessors", logger)
-	// This has to be outside the goroutine to ensure that each consumer gets
-	// different values.
 	var (
 		failureCount = 0
 		failureLimit = 10
@@ -85,7 +83,7 @@ func newConsumer(topics []string, groupId string, logger *zerolog.Logger) *kafka
 	brokers = strings.Split(os.Getenv("KAFKA_BROKERS"), ",")
 	// kafkaCertHack(logger)
 	compositeCertString := os.Getenv("KAFKA_SSL_CERTIFICATE")
-	os.Setenv("KAFKA_SSL_CERTIFICATE", strings.Replace(compositeCertString, `\n`, "", -1))
+	os.Setenv("KAFKA_SSL_CERTIFICATE", strings.Replace(compositeCertString, `\n`, "\r", -1))
 	if os.Getenv("ENV") != "local" {
 		tlsDialer, _, err := batgo_kafka.TLSDialer()
 		dialer = tlsDialer
