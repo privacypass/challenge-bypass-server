@@ -85,8 +85,8 @@ func newConsumer(topics []string, groupId string, logger *zerolog.Logger) *kafka
 	var dialer *kafka.Dialer
 	brokers = strings.Split(os.Getenv("KAFKA_BROKERS"), ",")
 	kafkaCertHack(logger)
-	compositeCertString := os.Getenv("KAFKA_SSL_CERTIFICATE")
-	os.Setenv("KAFKA_SSL_CERTIFICATE", strings.Replace(compositeCertString, "\\", "", -1))
+	//compositeCertString := os.Getenv("KAFKA_SSL_CERTIFICATE")
+	//os.Setenv("KAFKA_SSL_CERTIFICATE", strings.Replace(compositeCertString, "\\", "", -1))
 	if os.Getenv("ENV") != "local" {
 		tlsDialer, _, err := batgo_kafka.TLSDialer()
 		dialer = tlsDialer
@@ -158,8 +158,8 @@ func kafkaCertHack(logger *zerolog.Logger) {
 		}
 	}
 	type CompositeCert struct {
-		key         string
-		certificate string
+		Key         string
+		Certificate string
 	}
 	var compositeCert CompositeCert
 	compositeCertString := os.Getenv("KAFKA_SSL_CERTIFICATE")
@@ -170,7 +170,7 @@ func kafkaCertHack(logger *zerolog.Logger) {
 		if err != nil {
 			logger.Error().Msg(fmt.Sprintf("Failed to unmarshal KAFKA_SSL_CERTIFICATE. %e", err))
 		} else {
-			if err := os.WriteFile("/etc/kafka.key", []byte(compositeCert.key), 0666); err != nil {
+			if err := os.WriteFile("/etc/kafka.key", []byte(compositeCert.Key), 0666); err != nil {
 				logger.Error().Err(err).Msg("")
 			} else {
 				err = os.Setenv("KAFKA_SSL_KEY_LOCATION", "/etc/kafka.key")
@@ -178,7 +178,7 @@ func kafkaCertHack(logger *zerolog.Logger) {
 					logger.Error().Msg(fmt.Sprintf("Failed to set key location environment variable: %e", err))
 				}
 			}
-			if err := os.WriteFile("/etc/kafka.cert", []byte(compositeCert.certificate), 0666); err != nil {
+			if err := os.WriteFile("/etc/kafka.cert", []byte(compositeCert.Certificate), 0666); err != nil {
 				logger.Error().Err(err).Msg("")
 			} else {
 				err = os.Setenv("KAFKA_SSL_CERTIFICATE_LOCATION", "/etc/kafka.cert")
