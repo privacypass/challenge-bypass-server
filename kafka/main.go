@@ -84,7 +84,7 @@ func StartConsumers(server *server.Server, logger *zerolog.Logger) error {
 func newConsumer(topics []string, groupId string, logger *zerolog.Logger) *kafka.Reader {
 	var dialer *kafka.Dialer
 	brokers = strings.Split(os.Getenv("KAFKA_BROKERS"), ",")
-	// kafkaCertHack(logger)
+	kafkaCertHack(logger)
 	//compositeCertString := os.Getenv("KAFKA_SSL_CERTIFICATE")
 	//os.Setenv("KAFKA_SSL_CERTIFICATE", strings.Replace(compositeCertString, `\n`, "\\n", -1))
 	if os.Getenv("ENV") != "local" {
@@ -163,8 +163,10 @@ func kafkaCertHack(logger *zerolog.Logger) {
 	}
 	var compositeCert CompositeCert
 	compositeCertString := os.Getenv("KAFKA_SSL_CERTIFICATE")
+	logger.Trace().Msg(fmt.Sprintf("KAFKA: %s", compositeCertString))
 	if compositeCertString != "" {
 		err := json.Unmarshal([]byte(compositeCertString), &compositeCert)
+		logger.Trace().Msg(fmt.Sprintf("COMPPOSITE: %#v", compositeCert))
 		if err != nil {
 			logger.Error().Msg(fmt.Sprintf("Failed to unmarshal KAFKA_SSL_CERTIFICATE. %e", err))
 		} else {
