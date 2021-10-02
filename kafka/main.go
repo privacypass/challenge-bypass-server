@@ -68,7 +68,7 @@ func StartConsumers(server *server.Server, logger *zerolog.Logger) error {
 		failureCount = 0
 		failureLimit = 10
 	)
-	logger.Trace().Msg("Beginning message processing.")
+	logger.Trace().Msg("Beginning message processing")
 	for {
 		// `ReadMessage` blocks until the next event. Do not block main.
 		logger.Trace().Msg("Reading message")
