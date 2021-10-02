@@ -28,7 +28,7 @@ type TopicMapping struct {
 func StartConsumers(server *server.Server, logger *zerolog.Logger) error {
 	env := os.Getenv("ENV")
 	if env == "" {
-		env = "development"
+		env = "staging"
 	}
 	logger.Info().Msg(fmt.Sprintf("Starting %s Kafka consumers", env))
 	topicMappings := []TopicMapping{
