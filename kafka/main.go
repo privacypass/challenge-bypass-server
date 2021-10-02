@@ -56,7 +56,10 @@ func StartConsumers(server *server.Server, logger *zerolog.Logger) error {
 	}
 
 	// consumer := newConsumer(topics, "cbpProcessors", logger)
-	config := Config{}
+	config, err := ParseConfig()
+	if err != nil {
+		logger.Error().Err(err).Msg("")
+	}
 	consumer, err := InitializeKafkaReader(config, topics, "cbpProcessors")
 	if err != nil {
 		logger.Error().Err(err).Msg("")
