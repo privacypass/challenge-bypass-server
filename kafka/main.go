@@ -105,7 +105,6 @@ func newConsumer(topics []string, groupId string, logger *zerolog.Logger) *kafka
 		MinBytes:       1e6,         // 4MB
 		MaxBytes:       4e6,         // 4MB
 	})
-	logger.Info().Msg(fmt.Sprintf("KAFKA READER: %#v", reader))
 	return reader
 }
 
