@@ -34,7 +34,7 @@ func SignedTokenRedeemHandler(
 		logger.Error().Msg(fmt.Sprintf("Request %s: Failed Avro deserialization: %e", tokenRedeemRequestSet.Request_id, err))
 	}
 	var redeemedTokenResults []avroSchema.RedeemResult
-	if len(tokenRedeemRequestSet.Data) < 1 {
+	if len(tokenRedeemRequestSet.Data) > 1 {
 		message := "Data array unexpectedly contained more than a single message. This array is intended to make future extension easier, but no more than a single value is currently expected."
 		logger.Error().Msg(message)
 		panic(message)
