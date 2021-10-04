@@ -79,21 +79,12 @@ func StartConsumers(server *server.Server, logger *zerolog.Logger) error {
 
 // NewConsumer returns a Kafka reader configured for the given topic and group.
 func newConsumer(topics []string, groupId string, logger *zerolog.Logger) *kafka.Reader {
-	var dialer *kafka.Dialer
-	brokers = strings.Split(os.Getenv("KAFKA_BROKERS"), ",")
-	if os.Getenv("ENV") != "local" {
-		tlsDialer, _, err := batgo_kafka.TLSDialer()
-		dialer = tlsDialer
-		if err != nil {
-			logger.Error().Msg(fmt.Sprintf("Failed to initialize TLS dialer: %e", err))
-		}
-	}
 	logger.Info().Msg(fmt.Sprintf("Subscribing to kafka topic %s on behalf of group %s using brokers %s", topics, groupId, brokers))
 	kafkaLogger := logrus.New()
 	kafkaLogger.SetLevel(logrus.TraceLevel)
 	reader := kafka.NewReader(kafka.ReaderConfig{
 		Brokers:        brokers,
-		Dialer:         dialer,
+		Dialer:         getDialer(logger),
 		GroupTopics:    topics,
 		GroupID:        groupId,
 		StartOffset:    -2,
@@ -109,19 +100,18 @@ func newConsumer(topics []string, groupId string, logger *zerolog.Logger) *kafka
 // Emit sends a message over the Kafka interface.
 func Emit(topic string, message []byte, logger *zerolog.Logger) error {
 	logger.Info().Msg(fmt.Sprintf("Beginning data emission for topic %s", topic))
-	partition := 0
 
 	if len(brokers) < 1 {
 		brokers = strings.Split(os.Getenv("KAFKA_BROKERS"), ",")
 	}
-	conn, err := kafka.DialLeader(context.Background(), "tcp", brokers[0], topic, partition)
-	if err != nil {
-		logger.Error().Msg(fmt.Sprintf("Failed to dial leader: %e", err))
-		return err
-	}
+	conn := kafka.NewWriter(kafka.WriterConfig{
+		Brokers: brokers,
+		Topic:   topic,
+		Dialer:  getDialer(logger),
+	})
 
-	conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
-	_, err = conn.WriteMessages(
+	err := conn.WriteMessages(
+		context.Background(),
 		kafka.Message{Value: []byte(message)},
 	)
 	if err != nil {
@@ -129,10 +119,23 @@ func Emit(topic string, message []byte, logger *zerolog.Logger) error {
 		return err
 	}
 
-	if err := conn.Close(); err != nil {
+	if err = conn.Close(); err != nil {
 		logger.Error().Msg(fmt.Sprintf("Failed to close writer: %e", err))
 		return err
 	}
 	logger.Info().Msg("Data emitted")
 	return nil
+}
+
+func getDialer(logger *zerolog.Logger) *kafka.Dialer {
+	var dialer *kafka.Dialer
+	brokers = strings.Split(os.Getenv("KAFKA_BROKERS"), ",")
+	if os.Getenv("ENV") != "local" {
+		tlsDialer, _, err := batgo_kafka.TLSDialer()
+		dialer = tlsDialer
+		if err != nil {
+			logger.Error().Msg(fmt.Sprintf("Failed to initialize TLS dialer: %e", err))
+		}
+	}
+	return dialer
 }
