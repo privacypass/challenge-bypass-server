@@ -112,7 +112,7 @@ func Emit(topic string, message []byte, logger *zerolog.Logger) error {
 	partition := 0
 
 	if len(brokers) < 1 {
-		return fmt.Errorf("At least one kafka broker must be set")
+		brokers = strings.Split(os.Getenv("KAFKA_BROKERS"), ",")
 	}
 	conn, err := kafka.DialLeader(context.Background(), "tcp", brokers[0], topic, partition)
 	if err != nil {
