@@ -58,9 +58,7 @@ func StartConsumers(server *server.Server, logger *zerolog.Logger) error {
 	logger.Trace().Msg("Beginning message processing")
 	for {
 		// `ReadMessage` blocks until the next event. Do not block main.
-		logger.Trace().Msg("Reading message")
 		msg, err := consumer.ReadMessage(context.Background())
-		logger.Trace().Msg("Message read")
 		if err != nil {
 			logger.Error().Err(err).Msg("")
 			if failureCount > failureLimit {
