@@ -26,23 +26,23 @@ type TopicMapping struct {
 }
 
 func StartConsumers(server *server.Server, logger *zerolog.Logger) error {
-	env := os.Getenv("ENV")
-	if env == "" {
-		env = "staging"
-	}
-	logger.Info().Msg(fmt.Sprintf("Starting %s Kafka consumers", env))
+	adsRequestRedeemV1Topic := os.Getenv("ADS_REQUEST_REDEEM_TOPIC_V1")
+	adsResultRedeemV1Topic := os.Getenv("ADS_RESULT_REDEEM_TOPIC_V1")
+	adsRequestSignV1Topic := os.Getenv("ADS_REQUEST_SIGN_TOPIC_V1")
+	adsResultSignV1Topic := os.Getenv("ADS_RESULT_SIGN_TOPIC_V1")
+	adsConsumerGroupV1 := os.Getenv("ADS_CONSUMER_GROUP_V1")
 	topicMappings := []TopicMapping{
 		TopicMapping{
-			Topic:       "request.redeem.v1." + env + ".cbp",
-			ResultTopic: "result.redeem.v1." + env + ".cbp",
+			Topic:       adsRequestRedeemV1Topic,
+			ResultTopic: adsResultRedeemV1Topic,
 			Processor:   SignedTokenRedeemHandler,
-			Group:       "cbpProcessors",
+			Group:       adsConsumerGroupV1,
 		},
 		TopicMapping{
-			Topic:       "request.sign.v1." + env + ".cbp",
-			ResultTopic: "result.sign.v1." + env + ".cbp",
+			Topic:       adsRequestSignV1Topic,
+			ResultTopic: adsResultSignV1Topic,
 			Processor:   SignedBlindedTokenIssuerHandler,
-			Group:       "cbpProcessors",
+			Group:       adsConsumerGroupV1,
 		},
 	}
 	var topics []string
@@ -50,7 +50,7 @@ func StartConsumers(server *server.Server, logger *zerolog.Logger) error {
 		topics = append(topics, topicMapping.Topic)
 	}
 
-	consumer := newConsumer(topics, "cbpProcessors", logger)
+	consumer := newConsumer(topics, adsConsumerGroupV1, logger)
 	var (
 		failureCount = 0
 		failureLimit = 10
