@@ -16,7 +16,7 @@ import (
 
 var brokers []string
 
-type Processor func([]byte, string, *server.Server, *zerolog.Logger)
+type Processor func([]byte, string, *server.Server, *zerolog.Logger) error
 
 type TopicMapping struct {
 	Topic       string
@@ -58,7 +58,8 @@ func StartConsumers(server *server.Server, logger *zerolog.Logger) error {
 	logger.Trace().Msg("Beginning message processing")
 	for {
 		// `ReadMessage` blocks until the next event. Do not block main.
-		msg, err := consumer.ReadMessage(context.Background())
+		ctx := context.Background()
+		msg, err := consumer.FetchMessage(ctx)
 		if err != nil {
 			logger.Error().Err(err).Msg("")
 			if failureCount > failureLimit {
@@ -70,7 +71,15 @@ func StartConsumers(server *server.Server, logger *zerolog.Logger) error {
 		logger.Info().Msg(fmt.Sprintf("Processing message for topic %s", msg.Topic))
 		for _, topicMapping := range topicMappings {
 			if msg.Topic == topicMapping.Topic {
-				topicMapping.Processor(msg.Value, topicMapping.ResultTopic, server, logger)
+				err := topicMapping.Processor(msg.Value, topicMapping.ResultTopic, server, logger)
+				if err == nil {
+					logger.Trace().Msg("Processing completed. Committing")
+					if err := consumer.CommitMessages(ctx, msg); err != nil {
+						logger.Error().Msg(fmt.Sprintf("Failed to commit: %s", err))
+					}
+				} else {
+					logger.Error().Err(err).Msg("Processing failed. Not committing.")
+				}
 			}
 		}
 	}

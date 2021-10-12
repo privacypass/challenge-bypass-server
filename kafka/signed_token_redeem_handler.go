@@ -2,6 +2,7 @@ package kafka
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -22,7 +23,7 @@ func SignedTokenRedeemHandler(
 	resultTopic string,
 	server *cbpServer.Server,
 	logger *zerolog.Logger,
-) {
+) error {
 	const (
 		OK                   = 0
 		DUPLICATE_REDEMPTION = 1
@@ -31,13 +32,13 @@ func SignedTokenRedeemHandler(
 	)
 	tokenRedeemRequestSet, err := avroSchema.DeserializeRedeemRequestSet(bytes.NewReader(data))
 	if err != nil {
-		logger.Error().Msg(fmt.Sprintf("Request %s: Failed Avro deserialization: %e", tokenRedeemRequestSet.Request_id, err))
+		return errors.New(fmt.Sprintf("Request %s: Failed Avro deserialization: %e", tokenRedeemRequestSet.Request_id, err))
 	}
 	var redeemedTokenResults []avroSchema.RedeemResult
 	if len(tokenRedeemRequestSet.Data) > 1 {
-		message := "Data array unexpectedly contained more than a single message. This array is intended to make future extension easier, but no more than a single value is currently expected."
-		logger.Error().Msg(message)
-		panic(message)
+		// NOTE: When we start supporting multiple requests we will need to review
+		// errors and return values as well.
+		return errors.New(fmt.Sprintf("Request %s: Data array unexpectedly contained more than a single message. This array is intended to make future extension easier, but no more than a single value is currently expected.", tokenRedeemRequestSet.Request_id))
 	}
 	for _, request := range tokenRedeemRequestSet.Data {
 		var (
@@ -69,17 +70,17 @@ func SignedTokenRedeemHandler(
 
 		issuers, err := server.GetIssuers(request.Issuer_type)
 		if err != nil {
-			logger.Error().Msg(fmt.Sprintf("Request %s: Invalid issuer: %e", tokenRedeemRequestSet.Request_id, err))
+			return errors.New(fmt.Sprintf("Request %s: Invalid issuer: %e", tokenRedeemRequestSet.Request_id, err))
 		}
 		tokenPreimage := crypto.TokenPreimage{}
 		err = tokenPreimage.UnmarshalText([]byte(request.Token_preimage))
 		if err != nil {
-			logger.Error().Msg(fmt.Sprintf("Request %s: Could not unmarshal text into preimage: %e", tokenRedeemRequestSet.Request_id, err))
+			return errors.New(fmt.Sprintf("Request %s: Could not unmarshal text into preimage: %e", tokenRedeemRequestSet.Request_id, err))
 		}
 		verificationSignature := crypto.VerificationSignature{}
 		err = verificationSignature.UnmarshalText([]byte(request.Signature))
 		if err != nil {
-			logger.Error().Msg(fmt.Sprintf("Request %s: Could not unmarshal text into verification signature: %e", tokenRedeemRequestSet.Request_id, err))
+			return errors.New(fmt.Sprintf("Request %s: Could not unmarshal text into verification signature: %e", tokenRedeemRequestSet.Request_id, err))
 		}
 		for _, issuer := range *issuers {
 			if !issuer.ExpiresAt.IsZero() && issuer.ExpiresAt.Before(time.Now()) {
@@ -132,8 +133,7 @@ func SignedTokenRedeemHandler(
 		publicKey := verifiedIssuer.SigningKey.PublicKey()
 		marshaledPublicKey, err := publicKey.MarshalText()
 		if err != nil {
-			logger.Error().Msg(fmt.Sprintf("Request %s: Could not marshal public key text", tokenRedeemRequestSet.Request_id))
-			panic(err)
+			return errors.New(fmt.Sprintf("Request %s: Could not marshal public key text", tokenRedeemRequestSet.Request_id))
 		}
 		redeemedTokenResults = append(redeemedTokenResults, avroSchema.RedeemResult{
 			Issuer_public_key: string(marshaledPublicKey),
@@ -149,12 +149,12 @@ func SignedTokenRedeemHandler(
 	var resultSetBuffer bytes.Buffer
 	err = resultSet.Serialize(&resultSetBuffer)
 	if err != nil {
-		logger.Error().Msg(fmt.Sprintf("Request %s: Failed to serialize ResultSet: %e", tokenRedeemRequestSet.Request_id, err))
-		panic("Failed to serialize ResultSet")
+		return errors.New(fmt.Sprintf("Request %s: Failed to serialize ResultSet: %e", tokenRedeemRequestSet.Request_id, err))
 	}
 
 	err = Emit(resultTopic, resultSetBuffer.Bytes(), logger)
 	if err != nil {
-		logger.Error().Msg(fmt.Sprintf("Request %s: Failed to emit results to topic %s: %e", tokenRedeemRequestSet.Request_id, resultTopic, err))
+		return errors.New(fmt.Sprintf("Request %s: Failed to emit results to topic %s: %e", tokenRedeemRequestSet.Request_id, resultTopic, err))
 	}
+	return nil
 }
