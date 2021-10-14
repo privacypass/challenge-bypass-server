@@ -14,7 +14,7 @@
                     "type": "record",
                     "name": "RedeemResult",
                     "fields": [
-                        {"name": "issuer_public_key", "type": "string"},
+                        {"name": "issuer_name", "type": "string"},
                         {"name": "issuer_cohort", "type": "int"},
                         {
                             "name": "status",

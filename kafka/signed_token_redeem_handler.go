@@ -46,13 +46,13 @@ func SignedTokenRedeemHandler(
 			verifiedIssuer       = &cbpServer.Issuer{}
 			verifiedCohort int32 = 0
 		)
-		if request.Issuer_type == "" {
-			logger.Error().Msg(fmt.Sprintf("Request %s: Missing issuer type", tokenRedeemRequestSet.Request_id))
+		if request.Public_key == "" {
+			logger.Error().Msg(fmt.Sprintf("Request %s: Missing public key", tokenRedeemRequestSet.Request_id))
 			redeemedTokenResults = append(redeemedTokenResults, avroSchema.RedeemResult{
-				Issuer_public_key: "",
-				Issuer_cohort:     0,
-				Status:            ERROR,
-				Associated_data:   request.Associated_data,
+				Issuer_name:     "",
+				Issuer_cohort:   0,
+				Status:          ERROR,
+				Associated_data: request.Associated_data,
 			})
 			continue
 		}
@@ -60,15 +60,15 @@ func SignedTokenRedeemHandler(
 		if request.Token_preimage == "" || request.Signature == "" || request.Binding == "" {
 			logger.Error().Msg(fmt.Sprintf("Request %s: Empty request", tokenRedeemRequestSet.Request_id))
 			redeemedTokenResults = append(redeemedTokenResults, avroSchema.RedeemResult{
-				Issuer_public_key: "",
-				Issuer_cohort:     0,
-				Status:            ERROR,
-				Associated_data:   request.Associated_data,
+				Issuer_name:     "",
+				Issuer_cohort:   0,
+				Status:          ERROR,
+				Associated_data: request.Associated_data,
 			})
 			continue
 		}
 
-		issuers, err := server.GetIssuers(request.Issuer_type)
+		issuers, err := server.FetchAllIssuers()
 		if err != nil {
 			return errors.New(fmt.Sprintf("Request %s: Invalid issuer: %e", tokenRedeemRequestSet.Request_id, err))
 		}
@@ -86,28 +86,36 @@ func SignedTokenRedeemHandler(
 			if !issuer.ExpiresAt.IsZero() && issuer.ExpiresAt.Before(time.Now()) {
 				continue
 			}
-			if err := btd.VerifyTokenRedemption(
-				&tokenPreimage,
-				&verificationSignature,
-				string(request.Binding),
-				[]*crypto.SigningKey{issuer.SigningKey},
-			); err != nil {
-				verified = false
-			} else {
-				verified = true
-				verifiedIssuer = &issuer
-				verifiedCohort = int32(issuer.IssuerCohort)
-				break
+			// Only attempt token verification with the issuer that was provided.
+			issuerPublicKey := issuer.SigningKey.PublicKey()
+			marshaledPublicKey, err := issuerPublicKey.MarshalText()
+			if err != nil {
+				return errors.New(fmt.Sprintf("Request %s: Could not unmarshal issuer private key into text: %e", tokenRedeemRequestSet.Request_id, err))
+			}
+			if string(marshaledPublicKey) == request.Public_key {
+				if err := btd.VerifyTokenRedemption(
+					&tokenPreimage,
+					&verificationSignature,
+					string(request.Binding),
+					[]*crypto.SigningKey{issuer.SigningKey},
+				); err != nil {
+					verified = false
+				} else {
+					verified = true
+					verifiedIssuer = &issuer
+					verifiedCohort = int32(issuer.IssuerCohort)
+					break
+				}
 			}
 		}
 
 		if !verified {
 			logger.Error().Msg(fmt.Sprintf("Request %s: Could not verify that the token redemption is valid", tokenRedeemRequestSet.Request_id))
 			redeemedTokenResults = append(redeemedTokenResults, avroSchema.RedeemResult{
-				Issuer_public_key: "",
-				Issuer_cohort:     0,
-				Status:            UNVERIFIED,
-				Associated_data:   request.Associated_data,
+				Issuer_name:     "",
+				Issuer_cohort:   0,
+				Status:          UNVERIFIED,
+				Associated_data: request.Associated_data,
 			})
 			continue
 		}
@@ -115,31 +123,27 @@ func SignedTokenRedeemHandler(
 			if strings.Contains(err.Error(), "Duplicate") {
 				logger.Error().Msg(fmt.Sprintf("Request %s: Duplicate redemption: %e", tokenRedeemRequestSet.Request_id, err))
 				redeemedTokenResults = append(redeemedTokenResults, avroSchema.RedeemResult{
-					Issuer_public_key: "",
-					Issuer_cohort:     0,
-					Status:            DUPLICATE_REDEMPTION,
-					Associated_data:   request.Associated_data,
+					Issuer_name:     "",
+					Issuer_cohort:   0,
+					Status:          DUPLICATE_REDEMPTION,
+					Associated_data: request.Associated_data,
 				})
 			}
 			logger.Error().Msg(fmt.Sprintf("Request %s: Could not mark token redemption", tokenRedeemRequestSet.Request_id))
 			redeemedTokenResults = append(redeemedTokenResults, avroSchema.RedeemResult{
-				Issuer_public_key: "",
-				Issuer_cohort:     0,
-				Status:            ERROR,
-				Associated_data:   request.Associated_data,
+				Issuer_name:     "",
+				Issuer_cohort:   0,
+				Status:          ERROR,
+				Associated_data: request.Associated_data,
 			})
 			continue
 		}
-		publicKey := verifiedIssuer.SigningKey.PublicKey()
-		marshaledPublicKey, err := publicKey.MarshalText()
-		if err != nil {
-			return errors.New(fmt.Sprintf("Request %s: Could not marshal public key text", tokenRedeemRequestSet.Request_id))
-		}
+		issuerName := verifiedIssuer.IssuerType
 		redeemedTokenResults = append(redeemedTokenResults, avroSchema.RedeemResult{
-			Issuer_public_key: string(marshaledPublicKey),
-			Issuer_cohort:     verifiedCohort,
-			Status:            OK,
-			Associated_data:   request.Associated_data,
+			Issuer_name:     issuerName,
+			Issuer_cohort:   verifiedCohort,
+			Status:          OK,
+			Associated_data: request.Associated_data,
 		})
 	}
 	resultSet := avroSchema.RedeemResultSet{

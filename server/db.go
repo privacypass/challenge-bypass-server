@@ -315,7 +315,7 @@ func (c *Server) fetchIssuers(issuerType string) (*[]Issuer, error) {
 	return &issuers, nil
 }
 
-func (c *Server) fetchAllIssuers() (*[]Issuer, error) {
+func (c *Server) FetchAllIssuers() (*[]Issuer, error) {
 	fetchedIssuers := []issuer{}
 	err := c.db.Select(
 		&fetchedIssuers,

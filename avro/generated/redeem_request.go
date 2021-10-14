@@ -24,7 +24,7 @@ type RedeemRequest struct {
 	// contains METADATA
 	Associated_data Bytes `json:"associated_data"`
 
-	Issuer_type string `json:"issuer_type"`
+	Public_key string `json:"public_key"`
 
 	Token_preimage string `json:"token_preimage"`
 
@@ -33,7 +33,7 @@ type RedeemRequest struct {
 	Signature string `json:"signature"`
 }
 
-const RedeemRequestAvroCRC64Fingerprint = "\x93D\x90fI\xba\xe06"
+const RedeemRequestAvroCRC64Fingerprint = "C\xcb帹b\aC"
 
 func NewRedeemRequest() RedeemRequest {
 	r := RedeemRequest{}
@@ -69,7 +69,7 @@ func writeRedeemRequest(r RedeemRequest, w io.Writer) error {
 	if err != nil {
 		return err
 	}
-	err = vm.WriteString(r.Issuer_type, w)
+	err = vm.WriteString(r.Public_key, w)
 	if err != nil {
 		return err
 	}
@@ -93,7 +93,7 @@ func (r RedeemRequest) Serialize(w io.Writer) error {
 }
 
 func (r RedeemRequest) Schema() string {
-	return "{\"fields\":[{\"doc\":\"contains METADATA\",\"name\":\"associated_data\",\"type\":\"bytes\"},{\"name\":\"issuer_type\",\"type\":\"string\"},{\"name\":\"token_preimage\",\"type\":\"string\"},{\"name\":\"binding\",\"type\":\"string\"},{\"name\":\"signature\",\"type\":\"string\"}],\"name\":\"brave.cbp.RedeemRequest\",\"type\":\"record\"}"
+	return "{\"fields\":[{\"doc\":\"contains METADATA\",\"name\":\"associated_data\",\"type\":\"bytes\"},{\"name\":\"public_key\",\"type\":\"string\"},{\"name\":\"token_preimage\",\"type\":\"string\"},{\"name\":\"binding\",\"type\":\"string\"},{\"name\":\"signature\",\"type\":\"string\"}],\"name\":\"brave.cbp.RedeemRequest\",\"type\":\"record\"}"
 }
 
 func (r RedeemRequest) SchemaName() string {
@@ -114,7 +114,7 @@ func (r *RedeemRequest) Get(i int) types.Field {
 	case 0:
 		return &BytesWrapper{Target: &r.Associated_data}
 	case 1:
-		return &types.String{Target: &r.Issuer_type}
+		return &types.String{Target: &r.Public_key}
 	case 2:
 		return &types.String{Target: &r.Token_preimage}
 	case 3:
@@ -152,7 +152,7 @@ func (r RedeemRequest) MarshalJSON() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	output["issuer_type"], err = json.Marshal(r.Issuer_type)
+	output["public_key"], err = json.Marshal(r.Public_key)
 	if err != nil {
 		return nil, err
 	}
@@ -193,18 +193,18 @@ func (r *RedeemRequest) UnmarshalJSON(data []byte) error {
 		return fmt.Errorf("no value specified for associated_data")
 	}
 	val = func() json.RawMessage {
-		if v, ok := fields["issuer_type"]; ok {
+		if v, ok := fields["public_key"]; ok {
 			return v
 		}
 		return nil
 	}()
 
 	if val != nil {
-		if err := json.Unmarshal([]byte(val), &r.Issuer_type); err != nil {
+		if err := json.Unmarshal([]byte(val), &r.Public_key); err != nil {
 			return err
 		}
 	} else {
-		return fmt.Errorf("no value specified for issuer_type")
+		return fmt.Errorf("no value specified for public_key")
 	}
 	val = func() json.RawMessage {
 		if v, ok := fields["token_preimage"]; ok {

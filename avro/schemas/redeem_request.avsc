@@ -15,7 +15,7 @@
                     "name": "RedeemRequest",
                     "fields": [
                         {"name": "associated_data", "type": "bytes", "doc": "contains METADATA"},
-                        {"name": "issuer_type", "type": "string"},
+                        {"name": "public_key", "type": "string"},
                         {"name": "token_preimage", "type": "string"},
                         {"name": "binding", "type": "string"},
                         {"name": "signature", "type": "string"}

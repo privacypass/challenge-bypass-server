@@ -134,7 +134,7 @@ func (c *Server) issuerHandlerV2(w http.ResponseWriter, r *http.Request) *handle
 func (c *Server) issuerGetAllHandler(w http.ResponseWriter, r *http.Request) *handlers.AppError {
 	defer closers.Panic(r.Body)
 
-	issuers, appErr := c.fetchAllIssuers()
+	issuers, appErr := c.FetchAllIssuers()
 	if appErr != nil {
 		return &handlers.AppError{
 			Cause:   appErr,

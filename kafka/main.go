@@ -100,7 +100,7 @@ func newConsumer(topics []string, groupId string, logger *zerolog.Logger) *kafka
 		ErrorLogger:    kafkaLogger,
 		MaxWait:        time.Millisecond * 200,
 		CommitInterval: time.Second, // flush commits to Kafka every second
-		MinBytes:       1e6,         // 4MB
+		MinBytes:       1e6,         // 1MB
 		MaxBytes:       4e6,         // 4MB
 	})
 	return reader
