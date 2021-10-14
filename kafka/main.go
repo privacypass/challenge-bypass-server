@@ -26,11 +26,11 @@ type TopicMapping struct {
 }
 
 func StartConsumers(server *server.Server, logger *zerolog.Logger) error {
-	adsRequestRedeemV1Topic := os.Getenv("ADS_REQUEST_REDEEM_TOPIC_V1")
-	adsResultRedeemV1Topic := os.Getenv("ADS_RESULT_REDEEM_TOPIC_V1")
-	adsRequestSignV1Topic := os.Getenv("ADS_REQUEST_SIGN_TOPIC_V1")
-	adsResultSignV1Topic := os.Getenv("ADS_RESULT_SIGN_TOPIC_V1")
-	adsConsumerGroupV1 := os.Getenv("ADS_CONSUMER_GROUP_V1")
+	adsRequestRedeemV1Topic := os.Getenv("REDEEM_CONSUMER_TOPIC")
+	adsResultRedeemV1Topic := os.Getenv("REDEEM_PRODUCER_TOPIC")
+	adsRequestSignV1Topic := os.Getenv("SIGN_CONSUMER_TOPIC")
+	adsResultSignV1Topic := os.Getenv("SIGN_PRODUCER_TOPIC")
+	adsConsumerGroupV1 := os.Getenv("CONSUMER_GROUP")
 	topicMappings := []TopicMapping{
 		TopicMapping{
 			Topic:       adsRequestRedeemV1Topic,
