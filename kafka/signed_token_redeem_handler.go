@@ -82,6 +82,7 @@ func SignedTokenRedeemHandler(
 		if err != nil {
 			return errors.New(fmt.Sprintf("Request %s: Could not unmarshal text into verification signature: %e", tokenRedeemRequestSet.Request_id, err))
 		}
+		logger.Tracef("Issuers: %#v", issuers)
 		for _, issuer := range *issuers {
 			if !issuer.ExpiresAt.IsZero() && issuer.ExpiresAt.Before(time.Now()) {
 				continue
