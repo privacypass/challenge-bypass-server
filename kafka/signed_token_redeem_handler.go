@@ -92,6 +92,7 @@ func SignedTokenRedeemHandler(
 			if err != nil {
 				return errors.New(fmt.Sprintf("Request %s: Could not unmarshal issuer private key into text: %e", tokenRedeemRequestSet.Request_id, err))
 			}
+			logger.Tracef("Issuer: %s, Request: %s", string(marshaledPublicKey), request.Public_key)
 			if string(marshaledPublicKey) == request.Public_key {
 				if err := btd.VerifyTokenRedemption(
 					&tokenPreimage,
