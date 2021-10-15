@@ -120,6 +120,8 @@ func SignedTokenRedeemHandler(
 				Associated_data: request.Associated_data,
 			})
 			continue
+		} else {
+			logger.Trace().Msg(fmt.Sprintf("Request %s: Validated", tokenRedeemRequestSet.Request_id))
 		}
 		if err := server.RedeemToken(verifiedIssuer, &tokenPreimage, string(request.Binding)); err != nil {
 			if strings.Contains(err.Error(), "Duplicate") {
@@ -140,6 +142,7 @@ func SignedTokenRedeemHandler(
 			})
 			continue
 		}
+		logger.Trace().Msg(fmt.Sprintf("Request %s: Redeemed", tokenRedeemRequestSet.Request_id))
 		issuerName := verifiedIssuer.IssuerType
 		redeemedTokenResults = append(redeemedTokenResults, avroSchema.RedeemResult{
 			Issuer_name:     issuerName,
