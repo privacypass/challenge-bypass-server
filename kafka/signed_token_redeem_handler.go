@@ -82,7 +82,7 @@ func SignedTokenRedeemHandler(
 		if err != nil {
 			return errors.New(fmt.Sprintf("Request %s: Could not unmarshal text into verification signature: %e", tokenRedeemRequestSet.Request_id, err))
 		}
-		logger.Tracef("Issuers: %#v", issuers)
+		logger.Trace().Msg(fmt.Sprintf("Issuers: %#v", issuers))
 		for _, issuer := range *issuers {
 			if !issuer.ExpiresAt.IsZero() && issuer.ExpiresAt.Before(time.Now()) {
 				continue
@@ -93,7 +93,7 @@ func SignedTokenRedeemHandler(
 			if err != nil {
 				return errors.New(fmt.Sprintf("Request %s: Could not unmarshal issuer private key into text: %e", tokenRedeemRequestSet.Request_id, err))
 			}
-			logger.Tracef("Issuer: %s, Request: %s", string(marshaledPublicKey), request.Public_key)
+			logger.Trace().Msg(fmt.Sprintf("Issuer: %s, Request: %s", string(marshaledPublicKey), request.Public_key))
 			if string(marshaledPublicKey) == request.Public_key {
 				if err := btd.VerifyTokenRedemption(
 					&tokenPreimage,
