@@ -72,7 +72,18 @@ func SignedBlindedTokenIssuerHandler(
 		// grouping into a slice for approval
 		for _, stringBlindedToken := range request.Blinded_tokens {
 			blindedToken := crypto.BlindedToken{}
-			blindedToken.UnmarshalText([]byte(stringBlindedToken))
+			// @TODO get error and create avro response and continue
+			err := blindedToken.UnmarshalText([]byte(stringBlindedToken))
+			if err != nil {
+				logger.Error().Msg(fmt.Sprintf("Request %s: failed to unmarshal blinded tokens: %e", blindedTokenRequestSet.Request_id, err))
+				blindedTokenResults = append(blindedTokenResults, avroSchema.SigningResult{
+					Signed_tokens:     nil,
+					Issuer_public_key: "",
+					Status:            ERROR,
+					Associated_data:   request.Associated_data,
+				})
+				continue
+			}
 			blindedTokens = append(blindedTokens, &blindedToken)
 		}
 		// @TODO: If one token fails they will all fail. Assess this behavior
