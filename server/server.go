@@ -18,6 +18,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/pressly/lg"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/rs/zerolog"
 	"github.com/sirupsen/logrus"
 )
 
@@ -45,10 +46,10 @@ func init() {
 }
 
 type Server struct {
-	ListenPort   int    `json:"listen_port,omitempty"`
-	MaxTokens    int    `json:"max_tokens,omitempty"`
-	DbConfigPath string `json:"db_config_path"`
-	Logger		 *logrus.Logger `json:",omitempty"`
+	ListenPort   int            `json:"listen_port,omitempty"`
+	MaxTokens    int            `json:"max_tokens,omitempty"`
+	DbConfigPath string         `json:"db_config_path"`
+	Logger       *logrus.Logger `json:",omitempty"`
 	dynamo       *dynamodb.DynamoDB
 	dbConfig     DbConfig
 	db           *sqlx.DB
@@ -144,10 +145,9 @@ func (c *Server) setupRouter(ctx context.Context, logger *logrus.Logger) (contex
 	r.Use(chiware.Heartbeat("/"))
 	r.Use(chiware.Timeout(60 * time.Second))
 	r.Use(middleware.BearerToken)
-	if logger != nil {
-		// Also handles panic recovery
-		r.Use(middleware.RequestLogger(logger))
-	}
+	// Also handles panic recovery
+	zerologger := zerolog.New(os.Stderr).With().Timestamp().Logger()
+	r.Use(middleware.RequestLogger(&zerologger))
 
 	c.Logger = logger
 

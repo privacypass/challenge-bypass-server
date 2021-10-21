@@ -1,0 +1,40 @@
+{
+    "namespace": "brave.cbp",
+    "type": "record",
+    "doc": "Top level request containing the data to be processed, as well as any top level metadata for this message.",
+    "name": "SigningResultSet",
+    "fields" : [
+        {"name": "request_id", "type": "string"},
+        {
+            "name": "data",
+            "type": {
+                "type": "array",
+                "items":{
+                    "namespace": "brave.cbp",
+                    "type": "record",
+                    "name": "SigningResult",
+                    "fields": [
+                        {
+                            "name": "signed_tokens",
+                            "type": {
+                                "type": "array",
+                                "items": {
+                                    "name": "signed_token",
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        {"name": "issuer_public_key", "type": "string"},
+                        {"name": "proof", "type": "string"},
+                        {"name": "status", "type": {
+                            "name": "SigningResultStatus",
+                            "type": "enum",
+                            "symbols": ["ok", "invalid_issuer", "error"]
+                        }},
+                        {"name": "associated_data", "type": "bytes", "doc": "contains METADATA"}
+                    ]
+                }
+            }
+        }
+    ]
+}

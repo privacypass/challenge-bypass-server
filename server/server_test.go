@@ -271,7 +271,7 @@ func (suite *ServerTestSuite) TestIssueRedeemV2() {
 
 	expiresAt := time.Now().AddDate(0, 0, 1)
 	publicKey := suite.createIssuerWithExpiration(server.URL, issuerType, issuerCohort, expiresAt)
-	issuer, _ := suite.srv.getLatestIssuer(issuerType, issuerCohort)
+	issuer, _ := suite.srv.GetLatestIssuer(issuerType, issuerCohort)
 
 	unblindedToken := suite.createToken(server.URL, issuerType, publicKey)
 	preimageText, sigText := suite.prepareRedemption(unblindedToken, msg)
@@ -310,7 +310,7 @@ func (suite *ServerTestSuite) TestIssueRedeemV2() {
 	_, _ = suite.srv.db.Query(`UPDATE issuers SET expires_at=$1 WHERE id=$2`, time.Now().AddDate(0, 0, -1), issuer.ID)
 	issuers, _ := suite.srv.fetchIssuers(issuerType)
 	suite.Assert().Equal(len(*issuers), 2, "There should be two issuers of same type")
-	issuer, _ = suite.srv.getLatestIssuer(issuerType, issuerCohort)
+	issuer, _ = suite.srv.GetLatestIssuer(issuerType, issuerCohort)
 
 	resp, err = suite.attemptRedeem(server.URL, preimageText2, sigText2, issuerType, msg)
 	suite.Assert().NoError(err, "HTTP Request should complete")
@@ -377,7 +377,7 @@ func (suite *ServerTestSuite) TestNewIssueRedeemV2() {
 
 	expiresAt := time.Now().AddDate(0, 0, 1)
 	publicKey := suite.createIssuerWithExpiration(server.URL, issuerType, issuerCohort, expiresAt)
-	issuer, _ := suite.srv.getLatestIssuer(issuerType, issuerCohort)
+	issuer, _ := suite.srv.GetLatestIssuer(issuerType, issuerCohort)
 
 	unblindedToken := suite.createCohortToken(server.URL, issuerType, issuerCohort, publicKey)
 	preimageText, sigText := suite.prepareRedemption(unblindedToken, msg)

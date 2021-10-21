@@ -315,7 +315,7 @@ func (c *Server) fetchIssuers(issuerType string) (*[]Issuer, error) {
 	return &issuers, nil
 }
 
-func (c *Server) fetchAllIssuers() (*[]Issuer, error) {
+func (c *Server) FetchAllIssuers() (*[]Issuer, error) {
 	fetchedIssuers := []issuer{}
 	err := c.db.Select(
 		&fetchedIssuers,
@@ -464,6 +464,10 @@ func (c *Server) createIssuer(issuerType string, issuerCohort int, maxTokens int
 
 type Queryable interface {
 	Query(query string, args ...interface{}) (*sql.Rows, error)
+}
+
+func (c *Server) RedeemToken(issuer *Issuer, preimage *crypto.TokenPreimage, payload string) error {
+	return c.redeemToken(issuer, preimage, payload)
 }
 
 func (c *Server) redeemToken(issuer *Issuer, preimage *crypto.TokenPreimage, payload string) error {

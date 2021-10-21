@@ -2,6 +2,7 @@ package server
 
 import (
 	"errors"
+	"os"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -18,11 +19,16 @@ func (c *Server) initDynamo() {
 		SharedConfigState: session.SharedConfigEnable,
 	}))
 
-	svc := dynamodb.New(sess, &aws.Config{
-		Region:                        aws.String("us-west-2"),
-		Endpoint:                      aws.String(c.dbConfig.DynamodbEndpoint),
-		CredentialsChainVerboseErrors: aws.Bool(true),
-	})
+	var config = &aws.Config{
+		Region:   aws.String("us-west-2"),
+		Endpoint: aws.String(c.dbConfig.DynamodbEndpoint),
+	}
+
+	if os.Getenv("ENV") != "production" {
+		config.DisableSSL = aws.Bool(true)
+	}
+
+	svc := dynamodb.New(sess, config)
 
 	c.dynamo = svc
 }
@@ -36,8 +42,13 @@ func (c *Server) fetchRedemptionV2(issuer *Issuer, ID string) (*RedemptionV2, er
 
 	id := uuid.NewV5(issuerUUID, ID)
 
+	tableName := "redemptions"
+	if os.Getenv("dynamodb_table") != "" {
+		tableName = os.Getenv("dynamodb_table")
+	}
+
 	input := &dynamodb.GetItemInput{
-		TableName: aws.String("redemptions"),
+		TableName: aws.String(tableName),
 		Key: map[string]*dynamodb.AttributeValue{
 			"id": {
 				S: aws.String(id.String()),
@@ -110,6 +121,5 @@ func (c *Server) redeemTokenV2(issuer *Issuer, preimage *crypto.TokenPreimage, p
 		c.Logger.Error("Error creating item")
 		return err
 	}
-
 	return nil
 }
