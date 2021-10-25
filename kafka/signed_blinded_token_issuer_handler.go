@@ -60,7 +60,7 @@ func SignedBlindedTokenIssuerHandler(
 		if appErr != nil {
 			blindedTokenResults = append(blindedTokenResults, avroSchema.SigningResult{
 				Signed_tokens:     nil,
-				Issuer_public_key: "",
+				Public_key: "",
 				Status:            INVALID_ISSUER,
 				Associated_data:   request.Associated_data,
 			})
@@ -72,13 +72,12 @@ func SignedBlindedTokenIssuerHandler(
 		// grouping into a slice for approval
 		for _, stringBlindedToken := range request.Blinded_tokens {
 			blindedToken := crypto.BlindedToken{}
-			// @TODO get error and create avro response and continue
 			err := blindedToken.UnmarshalText([]byte(stringBlindedToken))
 			if err != nil {
 				logger.Error().Msg(fmt.Sprintf("Request %s: failed to unmarshal blinded tokens: %e", blindedTokenRequestSet.Request_id, err))
 				blindedTokenResults = append(blindedTokenResults, avroSchema.SigningResult{
 					Signed_tokens:     nil,
-					Issuer_public_key: "",
+					Public_key: "",
 					Status:            ERROR,
 					Associated_data:   request.Associated_data,
 				})
@@ -92,7 +91,7 @@ func SignedBlindedTokenIssuerHandler(
 			logger.Error().Msg(fmt.Sprintf("Request %s: Could not approve new tokens: %e", blindedTokenRequestSet.Request_id, err))
 			blindedTokenResults = append(blindedTokenResults, avroSchema.SigningResult{
 				Signed_tokens:     nil,
-				Issuer_public_key: "",
+				Public_key: "",
 				Status:            ERROR,
 				Associated_data:   request.Associated_data,
 			})
@@ -136,7 +135,7 @@ func SignedBlindedTokenIssuerHandler(
 		blindedTokenResults = append(blindedTokenResults, avroSchema.SigningResult{
 			Signed_tokens:     marshaledTokens,
 			Proof:             string(marshaledDLEQProof),
-			Issuer_public_key: string(marshaledPublicKey),
+			Public_key: string(marshaledPublicKey),
 			Status:            OK,
 			Associated_data:   request.Associated_data,
 		})
