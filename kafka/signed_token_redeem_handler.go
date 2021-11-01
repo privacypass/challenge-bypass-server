@@ -34,6 +34,11 @@ func SignedTokenRedeemHandler(
 	if err != nil {
 		return errors.New(fmt.Sprintf("Request %s: Failed Avro deserialization: %e", tokenRedeemRequestSet.Request_id, err))
 	}
+	defer func() {
+		if recover() != nil {
+			err = errors.New(fmt.Sprintf("Request %s: Redeem attempt panicked", tokenRedeemRequestSet.Request_id))
+		}
+	}()
 	var redeemedTokenResults []avroSchema.RedeemResult
 	if len(tokenRedeemRequestSet.Data) > 1 {
 		// NOTE: When we start supporting multiple requests we will need to review
