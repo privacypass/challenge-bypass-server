@@ -75,7 +75,7 @@ func SignedTokenRedeemHandler(
 
 		issuers, err := server.FetchAllIssuers()
 		if err != nil {
-			return errors.New(fmt.Sprintf("Request %s: Invalid issuer: %e", tokenRedeemRequestSet.Request_id, err))
+			return errors.New(fmt.Sprintf("Request %s: Failed to fetch all issuers", tokenRedeemRequestSet.Request_id))
 		}
 		tokenPreimage := crypto.TokenPreimage{}
 		err = tokenPreimage.UnmarshalText([]byte(request.Token_preimage))
@@ -95,7 +95,7 @@ func SignedTokenRedeemHandler(
 			issuerPublicKey := issuer.SigningKey.PublicKey()
 			marshaledPublicKey, err := issuerPublicKey.MarshalText()
 			if err != nil {
-				return errors.New(fmt.Sprintf("Request %s: Could not unmarshal issuer private key into text: %e", tokenRedeemRequestSet.Request_id, err))
+				return errors.New(fmt.Sprintf("Request %s: Could not unmarshal issuer public key into text: %e", tokenRedeemRequestSet.Request_id, err))
 			}
 			logger.Trace().Msg(fmt.Sprintf("Request %s: Issuer: %s, Request: %s", tokenRedeemRequestSet.Request_id, string(marshaledPublicKey), request.Public_key))
 			if string(marshaledPublicKey) == request.Public_key {
@@ -127,6 +127,9 @@ func SignedTokenRedeemHandler(
 		} else {
 			logger.Trace().Msg(fmt.Sprintf("Request %s: Validated", tokenRedeemRequestSet.Request_id))
 		}
+		logger.Trace().Msg(fmt.Sprintf("VERIFIED_ISSUER: %#v", verifiedIssuer))
+		logger.Trace().Msg(fmt.Sprintf("TOKEN_PREIMAGE: %#v", tokenPreimage))
+		logger.Trace().Msg(fmt.Sprintf("REQUEST_BINDING: %#v", string(request.Binding)))
 		if err := server.RedeemToken(verifiedIssuer, &tokenPreimage, string(request.Binding)); err != nil {
 			if strings.Contains(err.Error(), "Duplicate") {
 				logger.Error().Msg(fmt.Sprintf("Request %s: Duplicate redemption: %e", tokenRedeemRequestSet.Request_id, err))
