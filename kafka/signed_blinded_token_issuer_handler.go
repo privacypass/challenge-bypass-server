@@ -72,7 +72,6 @@ func SignedBlindedTokenIssuerHandler(
 		// grouping into a slice for approval
 		for _, stringBlindedToken := range request.Blinded_tokens {
 			blindedToken := crypto.BlindedToken{}
-			// @TODO get error and create avro response and continue
 			err := blindedToken.UnmarshalText([]byte(stringBlindedToken))
 			if err != nil {
 				logger.Error().Msg(fmt.Sprintf("Request %s: failed to unmarshal blinded tokens: %e", blindedTokenRequestSet.Request_id, err))
