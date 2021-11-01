@@ -11,7 +11,7 @@ func (c *Server) SetupCronTasks() {
 	cron := cron.New()
 	var cadence = "0 * * * *"
 	if os.Getenv("ENV") == "production" {
-		cadence = "0 1 * * *"
+		cadence = "1 * * * *"
 	}
 	if _, err := cron.AddFunc(cadence, func() {
 		if err := c.rotateIssuers(); err != nil {
