@@ -14,7 +14,7 @@ import (
 	uuid "github.com/satori/go.uuid"
 )
 
-func (c *Server) initDynamo() {
+func (c *Server) InitDynamo() {
 	sess := session.Must(session.NewSessionWithOptions(session.Options{
 		SharedConfigState: session.SharedConfigEnable,
 	}))
