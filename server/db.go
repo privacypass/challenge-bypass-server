@@ -467,10 +467,6 @@ type Queryable interface {
 }
 
 func (c *Server) RedeemToken(issuer *Issuer, preimage *crypto.TokenPreimage, payload string) error {
-	return c.redeemToken(issuer, preimage, payload)
-}
-
-func (c *Server) redeemToken(issuer *Issuer, preimage *crypto.TokenPreimage, payload string) error {
 	defer incrementCounter(redeemTokenCounter)
 	if issuer.Version == 1 {
 		return redeemTokenWithDB(c.db, issuer.IssuerType, preimage, payload)
