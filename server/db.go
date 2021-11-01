@@ -96,7 +96,7 @@ func (c *Server) LoadDbConfig(config DbConfig) {
 	c.dbConfig = config
 }
 
-func (c *Server) initDb() {
+func (c *Server) InitDb() {
 	cfg := c.dbConfig
 
 	db, err := sqlx.Open("postgres", cfg.ConnectionURI)
