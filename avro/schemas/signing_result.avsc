@@ -24,7 +24,7 @@
                                 }
                             }
                         },
-                        {"name": "public_key", "type": "string"},
+                        {"name": "issuer_public_key", "type": "string"},
                         {"name": "proof", "type": "string"},
                         {"name": "status", "type": {
                             "name": "SigningResultStatus",

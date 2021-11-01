@@ -23,7 +23,7 @@ var _ = fmt.Printf
 type SigningResult struct {
 	Signed_tokens []string `json:"signed_tokens"`
 
-	Public_key string `json:"public_key"`
+	Issuer_public_key string `json:"issuer_public_key"`
 
 	Proof string `json:"proof"`
 
@@ -32,7 +32,7 @@ type SigningResult struct {
 	Associated_data Bytes `json:"associated_data"`
 }
 
-const SigningResultAvroCRC64Fingerprint = "&S1\xa1\xe45\x17\xf6"
+const SigningResultAvroCRC64Fingerprint = "!:\xad/\x80\x85\x98\xa9"
 
 func NewSigningResult() SigningResult {
 	r := SigningResult{}
@@ -70,7 +70,7 @@ func writeSigningResult(r SigningResult, w io.Writer) error {
 	if err != nil {
 		return err
 	}
-	err = vm.WriteString(r.Public_key, w)
+	err = vm.WriteString(r.Issuer_public_key, w)
 	if err != nil {
 		return err
 	}
@@ -94,7 +94,7 @@ func (r SigningResult) Serialize(w io.Writer) error {
 }
 
 func (r SigningResult) Schema() string {
-	return "{\"fields\":[{\"name\":\"signed_tokens\",\"type\":{\"items\":{\"name\":\"signed_token\",\"type\":\"string\"},\"type\":\"array\"}},{\"name\":\"public_key\",\"type\":\"string\"},{\"name\":\"proof\",\"type\":\"string\"},{\"name\":\"status\",\"type\":{\"name\":\"SigningResultStatus\",\"symbols\":[\"ok\",\"invalid_issuer\",\"error\"],\"type\":\"enum\"}},{\"doc\":\"contains METADATA\",\"name\":\"associated_data\",\"type\":\"bytes\"}],\"name\":\"brave.cbp.SigningResult\",\"type\":\"record\"}"
+	return "{\"fields\":[{\"name\":\"signed_tokens\",\"type\":{\"items\":{\"name\":\"signed_token\",\"type\":\"string\"},\"type\":\"array\"}},{\"name\":\"issuer_public_key\",\"type\":\"string\"},{\"name\":\"proof\",\"type\":\"string\"},{\"name\":\"status\",\"type\":{\"name\":\"SigningResultStatus\",\"symbols\":[\"ok\",\"invalid_issuer\",\"error\"],\"type\":\"enum\"}},{\"doc\":\"contains METADATA\",\"name\":\"associated_data\",\"type\":\"bytes\"}],\"name\":\"brave.cbp.SigningResult\",\"type\":\"record\"}"
 }
 
 func (r SigningResult) SchemaName() string {
@@ -117,7 +117,7 @@ func (r *SigningResult) Get(i int) types.Field {
 
 		return &ArrayStringWrapper{Target: &r.Signed_tokens}
 	case 1:
-		return &types.String{Target: &r.Public_key}
+		return &types.String{Target: &r.Issuer_public_key}
 	case 2:
 		return &types.String{Target: &r.Proof}
 	case 3:
@@ -155,7 +155,7 @@ func (r SigningResult) MarshalJSON() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	output["public_key"], err = json.Marshal(r.Public_key)
+	output["issuer_public_key"], err = json.Marshal(r.Issuer_public_key)
 	if err != nil {
 		return nil, err
 	}
@@ -196,18 +196,18 @@ func (r *SigningResult) UnmarshalJSON(data []byte) error {
 		return fmt.Errorf("no value specified for signed_tokens")
 	}
 	val = func() json.RawMessage {
-		if v, ok := fields["public_key"]; ok {
+		if v, ok := fields["issuer_public_key"]; ok {
 			return v
 		}
 		return nil
 	}()
 
 	if val != nil {
-		if err := json.Unmarshal([]byte(val), &r.Public_key); err != nil {
+		if err := json.Unmarshal([]byte(val), &r.Issuer_public_key); err != nil {
 			return err
 		}
 	} else {
-		return fmt.Errorf("no value specified for public_key")
+		return fmt.Errorf("no value specified for issuer_public_key")
 	}
 	val = func() json.RawMessage {
 		if v, ok := fields["proof"]; ok {
