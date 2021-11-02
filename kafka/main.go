@@ -58,33 +58,35 @@ func StartConsumers(server *server.Server, logger *zerolog.Logger) error {
 		failureLimit = 10
 	)
 	logger.Trace().Msg("Beginning message processing")
-	for {
-		// `ReadMessage` blocks until the next event. Do not block main.
-		ctx := context.Background()
-		msg, err := consumer.FetchMessage(ctx)
-		if err != nil {
-			logger.Error().Err(err).Msg("")
-			if failureCount > failureLimit {
-				break
+	go func() {
+		for {
+			// `ReadMessage` blocks until the next event. Do not block main.
+			ctx := context.Background()
+			msg, err := consumer.FetchMessage(ctx)
+			if err != nil {
+				logger.Error().Err(err).Msg("")
+				if failureCount > failureLimit {
+					break
+				}
+				failureCount++
+				continue
 			}
-			failureCount++
-			continue
-		}
-		logger.Info().Msg(fmt.Sprintf("Processing message for topic %s", msg.Topic))
-		for _, topicMapping := range topicMappings {
-			if msg.Topic == topicMapping.Topic {
-				err := topicMapping.Processor(msg.Value, topicMapping.ResultTopic, server, logger)
-				if err == nil {
-					logger.Trace().Msg("Processing completed. Committing")
-					if err := consumer.CommitMessages(ctx, msg); err != nil {
-						logger.Error().Msg(fmt.Sprintf("Failed to commit: %s", err))
+			logger.Info().Msg(fmt.Sprintf("Processing message for topic %s", msg.Topic))
+			for _, topicMapping := range topicMappings {
+				if msg.Topic == topicMapping.Topic {
+					err := topicMapping.Processor(msg.Value, topicMapping.ResultTopic, server, logger)
+					if err == nil {
+						logger.Trace().Msg("Processing completed. Committing")
+						if err := consumer.CommitMessages(ctx, msg); err != nil {
+							logger.Error().Msg(fmt.Sprintf("Failed to commit: %s", err))
+						}
+					} else {
+						logger.Error().Err(err).Msg("Processing failed. Not committing.")
 					}
-				} else {
-					logger.Error().Err(err).Msg("Processing failed. Not committing.")
 				}
 			}
 		}
-	}
+	}()
 	return nil
 }
 
