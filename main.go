@@ -72,14 +72,6 @@ func main() {
 	srv.InitDynamo()
 	srv.SetupCronTasks()
 
-	err = srv.ListenAndServe(serverCtx, logger)
-
-	if err != nil {
-		raven.CaptureErrorAndWait(err, nil)
-		logger.Panic(err)
-		return
-	}
-
 	go func() {
 		zeroLogger := zerolog.New(os.Stderr).With().Timestamp().Caller().Logger()
 		if os.Getenv("ENV") != "production" {
@@ -93,4 +85,12 @@ func main() {
 			return
 		}
 	}()
+
+	err = srv.ListenAndServe(serverCtx, logger)
+
+	if err != nil {
+		raven.CaptureErrorAndWait(err, nil)
+		logger.Panic(err)
+		return
+	}
 }
