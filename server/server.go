@@ -76,6 +76,11 @@ func LoadConfigFile(filePath string) (Server, error) {
 	return conf, nil
 }
 
+// LoadDbConfig loads config into server variable
+func (c *Server) LoadDbConfig(config DbConfig) {
+	c.dbConfig = config
+}
+
 // InitDbConfig reads os environment and update conf
 func (c *Server) InitDbConfig() error {
 	conf := DbConfig{
@@ -134,12 +139,6 @@ func SetupLogger(ctx context.Context) (context.Context, *logrus.Logger) {
 }
 
 func (c *Server) setupRouter(ctx context.Context, logger *logrus.Logger) (context.Context, *chi.Mux) {
-	c.InitDb()
-	c.InitDynamo()
-	c.SetupCronTasks()
-
-	//govalidator.SetFieldsRequiredByDefault(true)
-
 	r := chi.NewRouter()
 	r.Use(chiware.RequestID)
 	r.Use(chiware.Heartbeat("/"))

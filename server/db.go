@@ -91,11 +91,6 @@ var (
 	errRedemptionNotFound   = errors.New("Redemption with the given id does not exist")
 )
 
-// LoadDbConfig loads config into server variable
-func (c *Server) LoadDbConfig(config DbConfig) {
-	c.dbConfig = config
-}
-
 func (c *Server) InitDb() {
 	cfg := c.dbConfig
 
