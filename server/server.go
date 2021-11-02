@@ -76,11 +76,6 @@ func LoadConfigFile(filePath string) (Server, error) {
 	return conf, nil
 }
 
-// LoadDbConfig loads config into server variable
-func (c *Server) LoadDbConfig(config DbConfig) {
-	c.dbConfig = config
-}
-
 // InitDbConfig reads os environment and update conf
 func (c *Server) InitDbConfig() error {
 	conf := DbConfig{
