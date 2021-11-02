@@ -51,6 +51,11 @@ func main() {
 		logger.Panic(err)
 	}
 
+	// Initialize databases and cron tasks before the Kafka processors and server start
+	srv.InitDb()
+	srv.InitDynamo()
+	srv.SetupCronTasks()
+
 	logger.WithFields(logrus.Fields{"prefix": "main"}).Info("Starting server")
 
 	// add profiling flag to enable profiling routes
@@ -67,11 +72,6 @@ func main() {
 		}()
 	}
 
-	// Initialize databases and cron tasks before the Kafka processors and server start
-	srv.InitDb()
-	srv.InitDynamo()
-	srv.SetupCronTasks()
-
 	go func() {
 		zeroLogger := zerolog.New(os.Stderr).With().Timestamp().Caller().Logger()
 		if os.Getenv("ENV") != "production" {
@@ -80,7 +80,6 @@ func main() {
 		err = kafka.StartConsumers(&srv, &zeroLogger)
 
 		if err != nil {
-			raven.CaptureErrorAndWait(err, nil)
 			zeroLogger.Error().Err(err).Msg("")
 			return
 		}
