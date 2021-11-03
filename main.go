@@ -8,10 +8,10 @@ import (
 	"os"
 	"strconv"
 
-//	"github.com/brave-intl/challenge-bypass-server/kafka"
+	"github.com/brave-intl/challenge-bypass-server/kafka"
 	"github.com/brave-intl/challenge-bypass-server/server"
 	raven "github.com/getsentry/raven-go"
-//	"github.com/rs/zerolog"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/sirupsen/logrus"
 )
