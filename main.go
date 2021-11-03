@@ -72,18 +72,18 @@ func main() {
 		}()
 	}
 
-//	go func() {
-//		zeroLogger := zerolog.New(os.Stderr).With().Timestamp().Caller().Logger()
-//		if os.Getenv("ENV") != "production" {
-//			zerolog.SetGlobalLevel(zerolog.TraceLevel)
-//		}
-//		err = kafka.StartConsumers(&srv, &zeroLogger)
-//
-//		if err != nil {
-//			zeroLogger.Error().Err(err).Msg("")
-//			return
-//		}
-//	}()
+	go func() {
+		zeroLogger := zerolog.New(os.Stderr).With().Timestamp().Caller().Logger()
+		if os.Getenv("ENV") != "production" {
+			zerolog.SetGlobalLevel(zerolog.TraceLevel)
+		}
+		err = kafka.StartConsumers(&srv, &zeroLogger)
+
+		if err != nil {
+			zeroLogger.Error().Err(err).Msg("")
+			return
+		}
+	}()
 
 	err = srv.ListenAndServe(serverCtx, logger)
 
