@@ -26,8 +26,6 @@ type TopicMapping struct {
 }
 
 func StartConsumers(server *server.Server, logger *zerolog.Logger) error {
-	server.InitDb()
-	server.InitDynamo()
 	adsRequestRedeemV1Topic := os.Getenv("REDEEM_CONSUMER_TOPIC")
 	adsResultRedeemV1Topic := os.Getenv("REDEEM_PRODUCER_TOPIC")
 	adsRequestSignV1Topic := os.Getenv("SIGN_CONSUMER_TOPIC")
