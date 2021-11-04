@@ -10,7 +10,7 @@ import (
 
 	"github.com/brave-intl/challenge-bypass-server/kafka"
 	"github.com/brave-intl/challenge-bypass-server/server"
-//	raven "github.com/getsentry/raven-go"
+	raven "github.com/getsentry/raven-go"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/sirupsen/logrus"
@@ -21,7 +21,7 @@ func main() {
 	var configFile string
 	var err error
 
-	_, logger := server.SetupLogger(context.Background())
+	serverCtx, logger := server.SetupLogger(context.Background())
 
 	logger.WithFields(logrus.Fields{"prefix": "main"}).Info("Loading config")
 
@@ -51,12 +51,13 @@ func main() {
 		logger.Panic(err)
 	}
 
+	logger.WithFields(logrus.Fields{"prefix": "main"}).Info("Starting server")
+
 	// Initialize databases and cron tasks before the Kafka processors and server start
-	srv.InitDb()
+	srv.InitDb(logger)
 	srv.InitDynamo()
 	srv.SetupCronTasks()
 
-	logger.WithFields(logrus.Fields{"prefix": "main"}).Info("Starting server")
 
 	// add profiling flag to enable profiling routes
 	if os.Getenv("PPROF_ENABLE") != "" {
@@ -85,11 +86,11 @@ func main() {
 		}
 	}()
 
-//	err = srv.ListenAndServe(serverCtx, logger)
-//
-//	if err != nil {
-//		raven.CaptureErrorAndWait(err, nil)
-//		logger.Panic(err)
-//		return
-//	}
+	err = srv.ListenAndServe(serverCtx, logger)
+
+	if err != nil {
+		raven.CaptureErrorAndWait(err, nil)
+		logger.Panic(err)
+		return
+	}
 }
