@@ -10,7 +10,7 @@ import (
 
 	"github.com/brave-intl/challenge-bypass-server/kafka"
 	"github.com/brave-intl/challenge-bypass-server/server"
-	raven "github.com/getsentry/raven-go"
+//	raven "github.com/getsentry/raven-go"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/sirupsen/logrus"
@@ -21,7 +21,7 @@ func main() {
 	var configFile string
 	var err error
 
-	serverCtx, logger := server.SetupLogger(context.Background())
+	_, logger := server.SetupLogger(context.Background())
 
 	logger.WithFields(logrus.Fields{"prefix": "main"}).Info("Loading config")
 
