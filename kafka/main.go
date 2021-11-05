@@ -90,6 +90,7 @@ func StartConsumers(server *server.Server, logger *zerolog.Logger) error {
 
 // NewConsumer returns a Kafka reader configured for the given topic and group.
 func newConsumer(topics []string, groupId string, logger *zerolog.Logger) *kafka.Reader {
+	brokers = strings.Split(os.Getenv("KAFKA_BROKERS"), ",")
 	logger.Info().Msg(fmt.Sprintf("Subscribing to kafka topic %s on behalf of group %s using brokers %s", topics, groupId, brokers))
 	kafkaLogger := logrus.New()
 	kafkaLogger.SetLevel(logrus.TraceLevel)
