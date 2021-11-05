@@ -16,7 +16,6 @@ import (
 	"github.com/lib/pq"
 	cache "github.com/patrickmn/go-cache"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/sirupsen/logrus"
 )
 
 // CachingConfig is how long data is cached
@@ -97,8 +96,7 @@ func (c *Server) LoadDbConfig(config DbConfig) {
 	c.dbConfig = config
 }
 
-func (c *Server) InitDb(logger *logrus.Logger) {
-	logger.Error("Initializing Database")
+func (c *Server) InitDb() {
 	cfg := c.dbConfig
 
 	db, err := sqlx.Open("postgres", cfg.ConnectionURI)
