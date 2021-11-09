@@ -85,13 +85,13 @@ func main() {
 				return
 			}
 		}()
-	} else {
-		err = srv.ListenAndServe(serverCtx, logger)
+	}
 
-		if err != nil {
-			raven.CaptureErrorAndWait(err, nil)
-			logger.Panic(err)
-			return
-		}
+	err = srv.ListenAndServe(serverCtx, logger)
+
+	if err != nil {
+		raven.CaptureErrorAndWait(err, nil)
+		logger.Panic(err)
+		return
 	}
 }
