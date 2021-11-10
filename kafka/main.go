@@ -56,40 +56,39 @@ func StartConsumers(server *server.Server, logger *zerolog.Logger) error {
 		failureLimit = 10
 	)
 	logger.Trace().Msg("Beginning message processing")
-	go func() {
-		for {
-			// `ReadMessage` blocks until the next event. Do not block main.
-			ctx := context.Background()
-			msg, err := consumer.FetchMessage(ctx)
-			if err != nil {
-				logger.Error().Err(err).Msg("")
-				if failureCount > failureLimit {
-					break
-				}
-				failureCount++
-				continue
+	for {
+		// `ReadMessage` blocks until the next event. Do not block main.
+		ctx := context.Background()
+		msg, err := consumer.FetchMessage(ctx)
+		if err != nil {
+			logger.Error().Err(err).Msg("")
+			if failureCount > failureLimit {
+				break
 			}
-			logger.Info().Msg(fmt.Sprintf("Processing message for topic %s", msg.Topic))
-			for _, topicMapping := range topicMappings {
-				if msg.Topic == topicMapping.Topic {
-					err := topicMapping.Processor(msg.Value, topicMapping.ResultTopic, server, logger)
-					if err == nil {
-						logger.Trace().Msg("Processing completed. Committing")
-						if err := consumer.CommitMessages(ctx, msg); err != nil {
-							logger.Error().Msg(fmt.Sprintf("Failed to commit: %s", err))
-						}
-					} else {
-						logger.Error().Err(err).Msg("Processing failed. Not committing.")
+			failureCount++
+			continue
+		}
+		logger.Info().Msg(fmt.Sprintf("Processing message for topic %s at offset %d", msg.Topic, msg.Offset))
+		for _, topicMapping := range topicMappings {
+			if msg.Topic == topicMapping.Topic {
+				err := topicMapping.Processor(msg.Value, topicMapping.ResultTopic, server, logger)
+				if err == nil {
+					logger.Trace().Msg(fmt.Sprintf("Processing completed. Committing offset %d", msg.Offset))
+					if err := consumer.CommitMessages(ctx, msg); err != nil {
+						logger.Error().Msg(fmt.Sprintf("Failed to commit: %s", err))
 					}
+				} else {
+					logger.Error().Err(err).Msg("Processing failed. Not committing.")
 				}
 			}
 		}
-	}()
+	}
 	return nil
 }
 
 // NewConsumer returns a Kafka reader configured for the given topic and group.
 func newConsumer(topics []string, groupId string, logger *zerolog.Logger) *kafka.Reader {
+	brokers = strings.Split(os.Getenv("KAFKA_BROKERS"), ",")
 	logger.Info().Msg(fmt.Sprintf("Subscribing to kafka topic %s on behalf of group %s using brokers %s", topics, groupId, brokers))
 	kafkaLogger := logrus.New()
 	kafkaLogger.SetLevel(logrus.TraceLevel)

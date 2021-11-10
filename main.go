@@ -63,7 +63,6 @@ func main() {
 	srv.InitDynamo()
 	srv.SetupCronTasks()
 
-
 	// add profiling flag to enable profiling routes
 	if os.Getenv("PPROF_ENABLE") != "" {
 		var addr = ":6061"
@@ -78,18 +77,20 @@ func main() {
 		}()
 	}
 
-	go func() {
-		zeroLogger := zerolog.New(os.Stderr).With().Timestamp().Caller().Logger()
-		if os.Getenv("ENV") != "production" {
-			zerolog.SetGlobalLevel(zerolog.TraceLevel)
-		}
-		err = kafka.StartConsumers(&srv, &zeroLogger)
+	if os.Getenv("KAFKA_ENABLED") != "false" {
+		go func() {
+			zeroLogger := zerolog.New(os.Stderr).With().Timestamp().Caller().Logger()
+			if os.Getenv("ENV") != "production" {
+				zerolog.SetGlobalLevel(zerolog.TraceLevel)
+			}
+			err = kafka.StartConsumers(&srv, &zeroLogger)
 
-		if err != nil {
-			zeroLogger.Error().Err(err).Msg("")
-			return
-		}
-	}()
+			if err != nil {
+				zeroLogger.Error().Err(err).Msg("")
+				return
+			}
+		}()
+	}
 
 	err = srv.ListenAndServe(serverCtx, logger)
 
