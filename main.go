@@ -51,6 +51,11 @@ func main() {
 		logger.Panic(err)
 	}
 
+	// Initialize databases and cron tasks before the Kafka processors and server start
+	srv.InitDb()
+	srv.InitDynamo()
+	srv.SetupCronTasks()
+
 	logger.WithFields(logrus.Fields{"prefix": "main"}).Info("Starting server")
 
 	// Initialize databases and cron tasks before the Kafka processors and server start
