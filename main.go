@@ -79,18 +79,22 @@ func main() {
 	if os.Getenv("KAFKA_ENABLED") != "false" {
 		zeroLogger.Trace().Msg("Spawning Kafka goroutine")
 		go func() {
+			zeroLogger.Trace().Msg("Initializing Kafka consumers")
 			err = kafka.StartConsumers(&srv, &zeroLogger)
 
 			if err != nil {
-				zeroLogger.Error().Err(err).Msg("")
+				zeroLogger.Error().Err(err).Msg("Failed to initialize Kafka consumers")
 				return
 			}
 		}()
 	}
 
+	zeroLogger.Trace().Msg("Initializing API server")
+
 	err = srv.ListenAndServe(serverCtx, logger)
 
 	if err != nil {
+		zeroLogger.Error().Err(err).Msg("Failed to initialize API server")
 		raven.CaptureErrorAndWait(err, nil)
 		logger.Panic(err)
 		return
