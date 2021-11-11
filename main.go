@@ -22,6 +22,9 @@ func main() {
 
 	serverCtx, logger := server.SetupLogger(context.Background())
 	zeroLogger := zerolog.New(os.Stderr).With().Timestamp().Caller().Logger()
+	if os.Getenv("ENV") != "production" {
+		zerolog.SetGlobalLevel(zerolog.TraceLevel)
+	}
 
 	srv := *server.DefaultServer
 
@@ -49,17 +52,18 @@ func main() {
 		logger.Panic(err)
 	}
 
-	zeroLogger.Trace().Msg("Initializing persistence and cron jobs.")
+	zeroLogger.Trace().Msg("Initializing persistence and cron jobs")
 
 	// Initialize databases and cron tasks before the Kafka processors and server start
 	srv.InitDb()
 	srv.InitDynamo()
 	srv.SetupCronTasks()
 
-	zeroLogger.Trace().Msg("Persistence and cron jobs initialized.")
+	zeroLogger.Trace().Msg("Persistence and cron jobs initialized")
 
 	// add profiling flag to enable profiling routes
 	if os.Getenv("PPROF_ENABLE") != "" {
+		zeroLogger.Trace().Msg("Enabling PPROF")
 		var addr = ":6061"
 		if os.Getenv("PPROF_PORT") != "" {
 			addr = os.Getenv("PPROF_PORT")
@@ -73,10 +77,8 @@ func main() {
 	}
 
 	if os.Getenv("KAFKA_ENABLED") != "false" {
+		zeroLogger.Trace().Msg("Spawning Kafka goroutine")
 		go func() {
-			if os.Getenv("ENV") != "production" {
-				zerolog.SetGlobalLevel(zerolog.TraceLevel)
-			}
 			err = kafka.StartConsumers(&srv, &zeroLogger)
 
 			if err != nil {
