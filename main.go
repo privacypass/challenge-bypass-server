@@ -13,7 +13,6 @@ import (
 	raven "github.com/getsentry/raven-go"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	"github.com/sirupsen/logrus"
 )
 
 func main() {
@@ -22,8 +21,7 @@ func main() {
 	var err error
 
 	serverCtx, logger := server.SetupLogger(context.Background())
-
-	logger.WithFields(logrus.Fields{"prefix": "main"}).Info("Loading config")
+	zeroLogger := zerolog.New(os.Stderr).With().Timestamp().Caller().Logger()
 
 	srv := *server.DefaultServer
 
@@ -51,12 +49,14 @@ func main() {
 		logger.Panic(err)
 	}
 
-	logger.WithFields(logrus.Fields{"prefix": "main"}).Info("Starting server")
+	zeroLogger.Trace().Msg("Initializing persistence and cron jobs.")
 
 	// Initialize databases and cron tasks before the Kafka processors and server start
 	srv.InitDb()
 	srv.InitDynamo()
 	srv.SetupCronTasks()
+
+	zeroLogger.Trace().Msg("Persistence and cron jobs initialized.")
 
 	// add profiling flag to enable profiling routes
 	if os.Getenv("PPROF_ENABLE") != "" {
@@ -74,7 +74,6 @@ func main() {
 
 	if os.Getenv("KAFKA_ENABLED") != "false" {
 		go func() {
-			zeroLogger := zerolog.New(os.Stderr).With().Timestamp().Caller().Logger()
 			if os.Getenv("ENV") != "production" {
 				zerolog.SetGlobalLevel(zerolog.TraceLevel)
 			}

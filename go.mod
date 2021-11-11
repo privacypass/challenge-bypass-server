@@ -8,6 +8,7 @@ require (
 	github.com/certifi/gocertifi v0.0.0-20180905225744-ee1a9a0726d2 // indirect
 	github.com/getsentry/raven-go v0.2.0
 	github.com/go-chi/chi v4.1.2+incompatible
+	github.com/go-chi/httplog v0.2.1 // indirect
 	github.com/golang-migrate/migrate/v4 v4.14.1
 	github.com/jmoiron/sqlx v1.2.0
 	github.com/lib/pq v1.9.0
