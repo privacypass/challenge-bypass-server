@@ -15,10 +15,10 @@ import (
 	"github.com/brave-intl/bat-go/middleware"
 	"github.com/go-chi/chi"
 	chiware "github.com/go-chi/chi/middleware"
+	"github.com/go-chi/httplog"
 	"github.com/jmoiron/sqlx"
 	"github.com/pressly/lg"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/rs/zerolog"
 	"github.com/sirupsen/logrus"
 )
 
@@ -124,8 +124,6 @@ func SetupLogger(ctx context.Context) (context.Context, *logrus.Logger) {
 		logger.SetLevel(logrus.WarnLevel)
 	}
 
-	//logger.Formatter = &logrus.JSONFormatter{}
-
 	// Redirect output from the standard logging package "log"
 	lg.RedirectStdlogOutput(logger)
 	lg.DefaultLogger = logger
@@ -140,8 +138,10 @@ func (c *Server) setupRouter(ctx context.Context, logger *logrus.Logger) (contex
 	r.Use(chiware.Timeout(60 * time.Second))
 	r.Use(middleware.BearerToken)
 	// Also handles panic recovery
-	zerologger := zerolog.New(os.Stderr).With().Timestamp().Logger()
-	r.Use(middleware.RequestLogger(&zerologger))
+	chiLogger := httplog.NewLogger("cbp-request-logs", httplog.Options{
+		JSON: true,
+	})
+	r.Use(httplog.RequestLogger(chiLogger))
 
 	c.Logger = logger
 

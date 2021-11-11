@@ -13,7 +13,6 @@ import (
 	raven "github.com/getsentry/raven-go"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	"github.com/sirupsen/logrus"
 )
 
 func main() {
@@ -22,8 +21,10 @@ func main() {
 	var err error
 
 	serverCtx, logger := server.SetupLogger(context.Background())
-
-	logger.WithFields(logrus.Fields{"prefix": "main"}).Info("Loading config")
+	zeroLogger := zerolog.New(os.Stderr).With().Timestamp().Caller().Logger()
+	if os.Getenv("ENV") != "production" {
+		zerolog.SetGlobalLevel(zerolog.TraceLevel)
+	}
 
 	srv := *server.DefaultServer
 
@@ -51,20 +52,18 @@ func main() {
 		logger.Panic(err)
 	}
 
-	// Initialize databases and cron tasks before the Kafka processors and server start
-	srv.InitDb()
-	srv.InitDynamo()
-	srv.SetupCronTasks()
-
-	logger.WithFields(logrus.Fields{"prefix": "main"}).Info("Starting server")
+	zeroLogger.Trace().Msg("Initializing persistence and cron jobs")
 
 	// Initialize databases and cron tasks before the Kafka processors and server start
 	srv.InitDb()
 	srv.InitDynamo()
 	srv.SetupCronTasks()
+
+	zeroLogger.Trace().Msg("Persistence and cron jobs initialized")
 
 	// add profiling flag to enable profiling routes
 	if os.Getenv("PPROF_ENABLE") != "" {
+		zeroLogger.Trace().Msg("Enabling PPROF")
 		var addr = ":6061"
 		if os.Getenv("PPROF_PORT") != "" {
 			addr = os.Getenv("PPROF_PORT")
@@ -78,23 +77,24 @@ func main() {
 	}
 
 	if os.Getenv("KAFKA_ENABLED") != "false" {
+		zeroLogger.Trace().Msg("Spawning Kafka goroutine")
 		go func() {
-			zeroLogger := zerolog.New(os.Stderr).With().Timestamp().Caller().Logger()
-			if os.Getenv("ENV") != "production" {
-				zerolog.SetGlobalLevel(zerolog.TraceLevel)
-			}
+			zeroLogger.Trace().Msg("Initializing Kafka consumers")
 			err = kafka.StartConsumers(&srv, &zeroLogger)
 
 			if err != nil {
-				zeroLogger.Error().Err(err).Msg("")
+				zeroLogger.Error().Err(err).Msg("Failed to initialize Kafka consumers")
 				return
 			}
 		}()
 	}
 
+	zeroLogger.Trace().Msg("Initializing API server")
+
 	err = srv.ListenAndServe(serverCtx, logger)
 
 	if err != nil {
+		zeroLogger.Error().Err(err).Msg("Failed to initialize API server")
 		raven.CaptureErrorAndWait(err, nil)
 		logger.Panic(err)
 		return
