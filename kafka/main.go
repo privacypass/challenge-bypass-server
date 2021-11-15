@@ -9,6 +9,7 @@ import (
 
 	batgo_kafka "github.com/brave-intl/bat-go/utils/kafka"
 	"github.com/brave-intl/challenge-bypass-server/server"
+	uuid "github.com/google/uuid"
 	"github.com/rs/zerolog"
 	"github.com/segmentio/kafka-go"
 	"github.com/sirupsen/logrus"
@@ -119,10 +120,19 @@ func Emit(topic string, message []byte, logger *zerolog.Logger) error {
 		Topic:   topic,
 		Dialer:  getDialer(logger),
 	})
+	messageKey := uuid.New()
+	marshaledMessageKey, err := messageKey.MarshalBinary()
+	if err != nil {
+		logger.Error().Msg(fmt.Sprintf("Failed to marshal UUID into binary. Using default key value. %e", err))
+		marshaledMessageKey = []byte("default")
+	}
 
-	err := conn.WriteMessages(
+	err = conn.WriteMessages(
 		context.Background(),
-		kafka.Message{Value: []byte(message)},
+		kafka.Message{
+			Value: []byte(message),
+			Key:   []byte(marshaledMessageKey),
+		},
 	)
 	if err != nil {
 		logger.Error().Msg(fmt.Sprintf("Failed to write messages: %e", err))
