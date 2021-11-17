@@ -10,6 +10,7 @@ require (
 	github.com/go-chi/chi v4.1.2+incompatible
 	github.com/go-chi/httplog v0.2.1 // indirect
 	github.com/golang-migrate/migrate/v4 v4.14.1
+	github.com/google/uuid v1.3.0 // indirect
 	github.com/jmoiron/sqlx v1.2.0
 	github.com/lib/pq v1.9.0
 	github.com/patrickmn/go-cache v2.1.0+incompatible
