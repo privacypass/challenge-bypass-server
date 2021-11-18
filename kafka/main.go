@@ -102,6 +102,7 @@ func StartConsumers(server *server.Server, logger *zerolog.Logger) error {
 		logger.Trace().Msg(fmt.Sprintf("Closing producer connection %v", topicMapping))
 		if err := topicMapping.ResultProducer.Close(); err != nil {
 			logger.Error().Msg(fmt.Sprintf("Failed to close writer: %e", err))
+			return err
 		}
 	}
 
