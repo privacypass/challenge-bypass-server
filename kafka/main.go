@@ -20,10 +20,10 @@ var brokers []string
 type Processor func([]byte, *kafka.Writer, *server.Server, *zerolog.Logger) error
 
 type TopicMapping struct {
-	Topic       string
+	Topic          string
 	ResultProducer *kafka.Writer
-	Processor   Processor
-	Group       string
+	Processor      Processor
+	Group          string
 }
 
 func StartConsumers(server *server.Server, logger *zerolog.Logger) error {
@@ -37,24 +37,24 @@ func StartConsumers(server *server.Server, logger *zerolog.Logger) error {
 	}
 	topicMappings := []TopicMapping{
 		TopicMapping{
-			Topic:       adsRequestRedeemV1Topic,
+			Topic: adsRequestRedeemV1Topic,
 			ResultProducer: kafka.NewWriter(kafka.WriterConfig{
 				Brokers: brokers,
 				Topic:   adsResultRedeemV1Topic,
 				Dialer:  getDialer(logger),
 			}),
-			Processor:   SignedTokenRedeemHandler,
-			Group:       adsConsumerGroupV1,
+			Processor: SignedTokenRedeemHandler,
+			Group:     adsConsumerGroupV1,
 		},
 		TopicMapping{
-			Topic:       adsRequestSignV1Topic,
+			Topic: adsRequestSignV1Topic,
 			ResultProducer: kafka.NewWriter(kafka.WriterConfig{
 				Brokers: brokers,
 				Topic:   adsResultSignV1Topic,
 				Dialer:  getDialer(logger),
 			}),
-			Processor:   SignedBlindedTokenIssuerHandler,
-			Group:       adsConsumerGroupV1,
+			Processor: SignedBlindedTokenIssuerHandler,
+			Group:     adsConsumerGroupV1,
 		},
 	}
 	var topics []string
@@ -112,9 +112,9 @@ func newConsumer(topics []string, groupId string, logger *zerolog.Logger) *kafka
 		StartOffset:    -2,
 		Logger:         kafkaLogger,
 		MaxWait:        time.Second * 20, // default 10s
-		CommitInterval: time.Second, // flush commits to Kafka every second
-		MinBytes:       50e6,         // 50MB
-		MaxBytes:       100e6,         // 100MB
+		CommitInterval: time.Second,      // flush commits to Kafka every second
+		MinBytes:       50e6,             // 50MB
+		MaxBytes:       100e6,            // 100MB
 	})
 	return reader
 }
