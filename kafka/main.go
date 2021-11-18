@@ -92,7 +92,7 @@ func newConsumer(topics []string, groupId string, logger *zerolog.Logger) *kafka
 	brokers = strings.Split(os.Getenv("KAFKA_BROKERS"), ",")
 	logger.Info().Msg(fmt.Sprintf("Subscribing to kafka topic %s on behalf of group %s using brokers %s", topics, groupId, brokers))
 	kafkaLogger := logrus.New()
-	kafkaLogger.SetLevel(logrus.TraceLevel)
+	kafkaLogger.SetLevel(logrus.WarnLevel)
 	reader := kafka.NewReader(kafka.ReaderConfig{
 		Brokers:        brokers,
 		Dialer:         getDialer(logger),
@@ -100,10 +100,10 @@ func newConsumer(topics []string, groupId string, logger *zerolog.Logger) *kafka
 		GroupID:        groupId,
 		StartOffset:    -2,
 		Logger:         kafkaLogger,
-		MaxWait:        time.Millisecond * 200,
+		MaxWait:        time.Second * 20, // default 10s
 		CommitInterval: time.Second, // flush commits to Kafka every second
-		MinBytes:       1e3,         // 1KB
-		MaxBytes:       4e6,         // 4MB
+		MinBytes:       50e6,         // 50MB
+		MaxBytes:       100e6,         // 100MB
 	})
 	return reader
 }
