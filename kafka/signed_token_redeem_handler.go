@@ -37,7 +37,6 @@ func SignedTokenRedeemHandler(
 	}
 	defer func() {
 		if recover() != nil {
-			logger.Error().Msg("PANIC!!!!")
 			err = errors.New(fmt.Sprintf("Request %s: Redeem attempt panicked", tokenRedeemRequestSet.Request_id))
 		}
 	}()

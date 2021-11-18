@@ -82,6 +82,7 @@ func StartConsumers(server *server.Server, logger *zerolog.Logger) error {
 			continue
 		}
 		logger.Info().Msg(fmt.Sprintf("Processing message for topic %s at offset %d", msg.Topic, msg.Offset))
+		logger.Info().Msg(fmt.Sprintf("Reader Stats: %#v", consumer.Stats()))
 		for _, topicMapping := range topicMappings {
 			if msg.Topic == topicMapping.Topic {
 				err := topicMapping.Processor(msg.Value, topicMapping.ResultProducer, server, logger)
@@ -101,7 +102,6 @@ func StartConsumers(server *server.Server, logger *zerolog.Logger) error {
 		logger.Trace().Msg(fmt.Sprintf("Closing producer connection %v", topicMapping))
 		if err := topicMapping.ResultProducer.Close(); err != nil {
 			logger.Error().Msg(fmt.Sprintf("Failed to close writer: %e", err))
-			return err
 		}
 	}
 
