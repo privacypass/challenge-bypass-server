@@ -10,6 +10,7 @@ import (
 	"github.com/brave-intl/challenge-bypass-server/btd"
 	cbpServer "github.com/brave-intl/challenge-bypass-server/server"
 	"github.com/rs/zerolog"
+	"github.com/segmentio/kafka-go"
 )
 
 /*
@@ -20,7 +21,7 @@ import (
 */
 func SignedBlindedTokenIssuerHandler(
 	data []byte,
-	resultTopic string,
+	producer *kafka.Writer,
 	server *cbpServer.Server,
 	logger *zerolog.Logger,
 ) error {
@@ -149,9 +150,9 @@ func SignedBlindedTokenIssuerHandler(
 	if err != nil {
 		return errors.New(fmt.Sprintf("Request %s: Failed to serialize ResultSet: %s", blindedTokenRequestSet.Request_id, resultSet))
 	}
-	err = Emit(resultTopic, resultSetBuffer.Bytes(), logger)
+	err = Emit(producer, resultSetBuffer.Bytes(), logger)
 	if err != nil {
-		return errors.New(fmt.Sprintf("Request %s: Failed to emit results to topic %s: %e", blindedTokenRequestSet.Request_id, resultTopic, err))
+		return errors.New(fmt.Sprintf("Request %s: Failed to emit results to topic %s: %e", blindedTokenRequestSet.Request_id, producer.Topic, err))
 	}
 	return nil
 }
