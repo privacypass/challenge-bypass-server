@@ -17,11 +17,11 @@ import (
 
 var brokers []string
 
-type Processor func([]byte, string, *server.Server, *zerolog.Logger) error
+type Processor func([]byte, *kafka.Writer, *server.Server, *zerolog.Logger) error
 
 type TopicMapping struct {
 	Topic       string
-	ResultTopic string
+	ResultProducer *kafka.Writer
 	Processor   Processor
 	Group       string
 }
@@ -32,16 +32,27 @@ func StartConsumers(server *server.Server, logger *zerolog.Logger) error {
 	adsRequestSignV1Topic := os.Getenv("SIGN_CONSUMER_TOPIC")
 	adsResultSignV1Topic := os.Getenv("SIGN_PRODUCER_TOPIC")
 	adsConsumerGroupV1 := os.Getenv("CONSUMER_GROUP")
+	if len(brokers) < 1 {
+		brokers = strings.Split(os.Getenv("KAFKA_BROKERS"), ",")
+	}
 	topicMappings := []TopicMapping{
 		TopicMapping{
 			Topic:       adsRequestRedeemV1Topic,
-			ResultTopic: adsResultRedeemV1Topic,
+			ResultProducer: kafka.NewWriter(kafka.WriterConfig{
+				Brokers: brokers,
+				Topic:   adsResultRedeemV1Topic,
+				Dialer:  getDialer(logger),
+			}),
 			Processor:   SignedTokenRedeemHandler,
 			Group:       adsConsumerGroupV1,
 		},
 		TopicMapping{
 			Topic:       adsRequestSignV1Topic,
-			ResultTopic: adsResultSignV1Topic,
+			ResultProducer: kafka.NewWriter(kafka.WriterConfig{
+				Brokers: brokers,
+				Topic:   adsResultSignV1Topic,
+				Dialer:  getDialer(logger),
+			}),
 			Processor:   SignedBlindedTokenIssuerHandler,
 			Group:       adsConsumerGroupV1,
 		},
@@ -72,7 +83,7 @@ func StartConsumers(server *server.Server, logger *zerolog.Logger) error {
 		logger.Info().Msg(fmt.Sprintf("Processing message for topic %s at offset %d", msg.Topic, msg.Offset))
 		for _, topicMapping := range topicMappings {
 			if msg.Topic == topicMapping.Topic {
-				err := topicMapping.Processor(msg.Value, topicMapping.ResultTopic, server, logger)
+				err := topicMapping.Processor(msg.Value, topicMapping.ResultProducer, server, logger)
 				if err == nil {
 					logger.Trace().Msg(fmt.Sprintf("Processing completed. Committing offset %d", msg.Offset))
 					if err := consumer.CommitMessages(ctx, msg); err != nil {
@@ -109,17 +120,9 @@ func newConsumer(topics []string, groupId string, logger *zerolog.Logger) *kafka
 }
 
 // Emit sends a message over the Kafka interface.
-func Emit(topic string, message []byte, logger *zerolog.Logger) error {
-	logger.Info().Msg(fmt.Sprintf("Beginning data emission for topic %s", topic))
+func Emit(producer *kafka.Writer, message []byte, logger *zerolog.Logger) error {
+	logger.Info().Msg(fmt.Sprintf("Beginning data emission for topic %s", producer.Topic))
 
-	if len(brokers) < 1 {
-		brokers = strings.Split(os.Getenv("KAFKA_BROKERS"), ",")
-	}
-	conn := kafka.NewWriter(kafka.WriterConfig{
-		Brokers: brokers,
-		Topic:   topic,
-		Dialer:  getDialer(logger),
-	})
 	messageKey := uuid.New()
 	marshaledMessageKey, err := messageKey.MarshalBinary()
 	if err != nil {
@@ -127,7 +130,7 @@ func Emit(topic string, message []byte, logger *zerolog.Logger) error {
 		marshaledMessageKey = []byte("default")
 	}
 
-	err = conn.WriteMessages(
+	err = producer.WriteMessages(
 		context.Background(),
 		kafka.Message{
 			Value: []byte(message),
@@ -139,7 +142,7 @@ func Emit(topic string, message []byte, logger *zerolog.Logger) error {
 		return err
 	}
 
-	if err = conn.Close(); err != nil {
+	if err = producer.Close(); err != nil {
 		logger.Error().Msg(fmt.Sprintf("Failed to close writer: %e", err))
 		return err
 	}

@@ -12,6 +12,7 @@ import (
 	"github.com/brave-intl/challenge-bypass-server/btd"
 	cbpServer "github.com/brave-intl/challenge-bypass-server/server"
 	"github.com/rs/zerolog"
+	"github.com/segmentio/kafka-go"
 )
 
 /*
@@ -20,7 +21,7 @@ import (
 */
 func SignedTokenRedeemHandler(
 	data []byte,
-	resultTopic string,
+	producer *kafka.Writer,
 	server *cbpServer.Server,
 	logger *zerolog.Logger,
 ) error {
@@ -167,9 +168,9 @@ func SignedTokenRedeemHandler(
 		return errors.New(fmt.Sprintf("Request %s: Failed to serialize ResultSet: %e", tokenRedeemRequestSet.Request_id, err))
 	}
 
-	err = Emit(resultTopic, resultSetBuffer.Bytes(), logger)
+	err = Emit(producer, resultSetBuffer.Bytes(), logger)
 	if err != nil {
-		return errors.New(fmt.Sprintf("Request %s: Failed to emit results to topic %s: %e", tokenRedeemRequestSet.Request_id, resultTopic, err))
+		return errors.New(fmt.Sprintf("Request %s: Failed to emit results to topic %s: %e", tokenRedeemRequestSet.Request_id, producer.Topic, err))
 	}
 	return nil
 }
