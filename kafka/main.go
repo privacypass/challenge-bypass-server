@@ -96,6 +96,15 @@ func StartConsumers(server *server.Server, logger *zerolog.Logger) error {
 			}
 		}
 	}
+
+	for _, topicMapping := range topicMappings {
+		logger.Trace().Msg(fmt.Sprintf("Closing producer connection %v", topicMapping))
+		if err := topicMapping.ResultProducer.Close(); err != nil {
+			logger.Error().Msg(fmt.Sprintf("Failed to close writer: %e", err))
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -114,8 +123,8 @@ func newConsumer(topics []string, groupId string, logger *zerolog.Logger) *kafka
 		Logger:         kafkaLogger,
 		MaxWait:        time.Second * 20, // default 10s
 		CommitInterval: time.Second,      // flush commits to Kafka every second
-		MinBytes:       1e3,             // 1KB
-		MaxBytes:       10e6,            // 10MB
+		MinBytes:       1e3,              // 1KB
+		MaxBytes:       10e6,             // 10MB
 	})
 	logger.Trace().Msg(fmt.Sprintf("Reader create with subscription"))
 	return reader
@@ -144,10 +153,6 @@ func Emit(producer *kafka.Writer, message []byte, logger *zerolog.Logger) error 
 		return err
 	}
 
-	if err = producer.Close(); err != nil {
-		logger.Error().Msg(fmt.Sprintf("Failed to close writer: %e", err))
-		return err
-	}
 	logger.Info().Msg("Data emitted")
 	return nil
 }
