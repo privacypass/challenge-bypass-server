@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -62,7 +63,13 @@ func StartConsumers(server *server.Server, logger *zerolog.Logger) error {
 		topics = append(topics, topicMapping.Topic)
 	}
 
-	for i := 1; i <= 10; i++ {
+	consumerCount, err := strconv.Atoi(os.Getenv("KAFKA_CONSUMERS_PER_NODE"))
+	if err != nil {
+		logger.Error().Err(err).Msg("Failed to convert KAFKA_CONSUMERS_PER_NODE variable to a usable integer. Defaulting to 1.")
+		consumerCount = 1
+	}
+
+	for i := 1; i <= consumerCount; i++ {
 		consumer := newConsumer(topics, adsConsumerGroupV1, logger)
 		var (
 			failureCount = 0
