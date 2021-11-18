@@ -110,11 +110,11 @@ func newConsumer(topics []string, groupId string, logger *zerolog.Logger) *kafka
 		Dialer:         getDialer(logger),
 		GroupTopics:    topics,
 		GroupID:        groupId,
-//		StartOffset:    -2,
+		StartOffset:    kafka.FirstOffset,
 		Logger:         kafkaLogger,
 		MaxWait:        time.Second * 20, // default 10s
 		CommitInterval: time.Second,      // flush commits to Kafka every second
-		MinBytes:       1e6,             // 1MB
+		MinBytes:       1e3,             // 1KB
 		MaxBytes:       10e6,            // 10MB
 	})
 	logger.Trace().Msg(fmt.Sprintf("Reader create with subscription"))
