@@ -33,7 +33,7 @@ func StartConsumers(server *server.Server, logger *zerolog.Logger) error {
 	adsResultRedeemV1Topic := os.Getenv("REDEEM_PRODUCER_TOPIC")
 	adsRequestSignV1Topic := os.Getenv("SIGN_CONSUMER_TOPIC")
 	adsResultSignV1Topic := os.Getenv("SIGN_PRODUCER_TOPIC")
-	adsOverflowRequestSignV1Topic := os.Getenv("OVERFLOW_REDEEM_PRODUCER_TOPIC")
+	adsOverflowRequestSignV1Topic := os.Getenv("OVERFLOW_SIGN_PRODUCER_TOPIC")
 	adsOverflowRequestRedeemV1Topic := os.Getenv("OVERFLOW_REDEEM_PRODUCER_TOPIC")
 	adsConsumerGroupV1 := os.Getenv("CONSUMER_GROUP")
 	adsOverflowConsumerGroupV1 := os.Getenv("OVERFLOW_CONSUMER_GROUP")
