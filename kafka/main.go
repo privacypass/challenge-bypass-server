@@ -69,6 +69,8 @@ func StartConsumers(server *server.Server, logger *zerolog.Logger) error {
 		consumerCount = 1
 	}
 
+	logger.Trace().Msg(fmt.Sprintf("Spawning %d consumer goroutines", consumerCount))
+
 	for i := 1; i <= consumerCount; i++ {
 		go func(topicMappings []TopicMapping) {
 			consumer := newConsumer(topics, adsConsumerGroupV1, logger)
