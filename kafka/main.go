@@ -33,7 +33,7 @@ func StartConsumers(server *server.Server, logger *zerolog.Logger) error {
 	adsResultRedeemV1Topic := os.Getenv("REDEEM_PRODUCER_TOPIC")
 	adsRequestSignV1Topic := os.Getenv("SIGN_CONSUMER_TOPIC")
 	adsResultSignV1Topic := os.Getenv("SIGN_PRODUCER_TOPIC")
-	adsOverflowRequestSignV1Topic := os.Getenv("OVERFLOW_SIGN_PRODUCER_TOPIC")
+	//adsOverflowRequestSignV1Topic := os.Getenv("OVERFLOW_SIGN_PRODUCER_TOPIC")
 	adsOverflowRequestRedeemV1Topic := os.Getenv("OVERFLOW_REDEEM_PRODUCER_TOPIC")
 	adsConsumerGroupV1 := os.Getenv("CONSUMER_GROUP")
 	adsOverflowConsumerGroupV1 := os.Getenv("OVERFLOW_CONSUMER_GROUP")
@@ -73,24 +73,9 @@ func StartConsumers(server *server.Server, logger *zerolog.Logger) error {
 				Topic:   adsResultSignV1Topic,
 				Dialer:  getDialer(logger),
 			}),
-			OverflowResultProducer: kafka.NewWriter(kafka.WriterConfig{
-				Brokers: brokers,
-				Topic:   adsOverflowRequestSignV1Topic,
-				Dialer:  getDialer(logger),
-			}),
+			OverflowResultProducer: nil,
 			Processor: SignedBlindedTokenIssuerHandler,
 			Group:     adsConsumerGroupV1,
-		},
-		TopicMapping{
-			Topic: adsOverflowRequestSignV1Topic,
-			ResultProducer: kafka.NewWriter(kafka.WriterConfig{
-				Brokers: brokers,
-				Topic:   adsResultSignV1Topic,
-				Dialer:  getDialer(logger),
-			}),
-			OverflowResultProducer: nil,
-			Processor:              SignedBlindedTokenIssuerHandler,
-			Group:                  adsOverflowConsumerGroupV1,
 		},
 		TopicMapping{
 			Topic: adsOverflowRequestRedeemV1Topic,
@@ -143,7 +128,7 @@ func StartConsumers(server *server.Server, logger *zerolog.Logger) error {
 				for _, topicMapping := range topicMappings {
 					if msg.Topic == topicMapping.Topic {
 						// If lag is really bad we should push excess to overflow
-						if readerStats.Lag > 1000 && adsConsumersWillOverflow {
+						if readerStats.Lag > 1000 && adsConsumersWillOverflow && topicMapping.OverflowResultProducer != nil {
 							err = punt(ctx, consumer, topicMapping, msg, logger)
 							if err != nil {
 								logger.Error().Err(err).Msg(fmt.Sprintf("Failed to produce offset %d into overflow topic.", msg.Offset))
