@@ -116,28 +116,7 @@ func StartConsumers(server *server.Server, logger *zerolog.Logger) error {
 	}
 
 	logger.Trace().Msg(fmt.Sprintf("Spawning %d consumer goroutines", consumerCount))
-	for i := 1; i <= consumerCount; i++ {
-		go func(topicMappings []TopicMapping) {
-			consumer := newConsumer(topics, adsConsumerGroupV1, logger)
-			var (
-				failureCount = 0
-				failureLimit = 10
-			)
-			logger.Trace().Msg("Beginning message processing")
-			for {
-				// `FetchMessage` blocks until the next event. Do not block main.
-				ctx := context.Background()
-				logger.Trace().Msg(fmt.Sprintf("Fetching messages from Kafka"))
-				msg, err := consumer.FetchMessage(ctx)
-				if err != nil {
-					logger.Error().Err(err).Msg("")
-					if failureCount > failureLimit {
-						break
-					}
-					failureCount++
-					continue
-				}
-				logger.Info().Msg(fmt.Sprintf("Processing message for topic %s at offset %d", msg.Topic, msg.Offset))
+
 				readerStats := consumer.Stats()
 				logger.Info().Msg(fmt.Sprintf("Reader Stats: %#v", readerStats))
 				for _, topicMapping := range topicMappings {
