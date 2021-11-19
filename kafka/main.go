@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -62,48 +63,60 @@ func StartConsumers(server *server.Server, logger *zerolog.Logger) error {
 		topics = append(topics, topicMapping.Topic)
 	}
 
-	consumer := newConsumer(topics, adsConsumerGroupV1, logger)
-	var (
-		failureCount = 0
-		failureLimit = 10
-	)
-	logger.Trace().Msg("Beginning message processing")
-	for {
-		// `FetchMessage` blocks until the next event. Do not block main.
-		ctx := context.Background()
-		logger.Trace().Msg(fmt.Sprintf("Fetching messages from Kafka"))
-		msg, err := consumer.FetchMessage(ctx)
-		if err != nil {
-			logger.Error().Err(err).Msg("")
-			if failureCount > failureLimit {
-				break
-			}
-			failureCount++
-			continue
-		}
-		logger.Info().Msg(fmt.Sprintf("Processing message for topic %s at offset %d", msg.Topic, msg.Offset))
-		logger.Info().Msg(fmt.Sprintf("Reader Stats: %#v", consumer.Stats()))
-		for _, topicMapping := range topicMappings {
-			if msg.Topic == topicMapping.Topic {
-				err := topicMapping.Processor(msg.Value, topicMapping.ResultProducer, server, logger)
-				if err == nil {
-					logger.Trace().Msg(fmt.Sprintf("Processing completed. Committing offset %d", msg.Offset))
-					if err := consumer.CommitMessages(ctx, msg); err != nil {
-						logger.Error().Msg(fmt.Sprintf("Failed to commit: %s", err))
-					}
-				} else {
-					logger.Error().Err(err).Msg("Processing failed. Not committing.")
-				}
-			}
-		}
+	consumerCount, err := strconv.Atoi(os.Getenv("KAFKA_CONSUMERS_PER_NODE"))
+	if err != nil {
+		logger.Error().Err(err).Msg("Failed to convert KAFKA_CONSUMERS_PER_NODE variable to a usable integer. Defaulting to 1.")
+		consumerCount = 1
 	}
 
-	for _, topicMapping := range topicMappings {
-		logger.Trace().Msg(fmt.Sprintf("Closing producer connection %v", topicMapping))
-		if err := topicMapping.ResultProducer.Close(); err != nil {
-			logger.Error().Msg(fmt.Sprintf("Failed to close writer: %e", err))
-			return err
-		}
+	for i := 1; i <= consumerCount; i++ {
+		go func(topicMappings []TopicMapping) {
+			consumer := newConsumer(topics, adsConsumerGroupV1, logger)
+			var (
+				failureCount = 0
+				failureLimit = 10
+			)
+			logger.Trace().Msg("Beginning message processing")
+			for {
+				// `FetchMessage` blocks until the next event. Do not block main.
+				ctx := context.Background()
+				logger.Trace().Msg(fmt.Sprintf("Fetching messages from Kafka"))
+				msg, err := consumer.FetchMessage(ctx)
+				if err != nil {
+					logger.Error().Err(err).Msg("")
+					if failureCount > failureLimit {
+						break
+					}
+					failureCount++
+					continue
+				}
+				logger.Info().Msg(fmt.Sprintf("Processing message for topic %s at offset %d", msg.Topic, msg.Offset))
+				logger.Info().Msg(fmt.Sprintf("Reader Stats: %#v", consumer.Stats()))
+				for _, topicMapping := range topicMappings {
+					if msg.Topic == topicMapping.Topic {
+						err := topicMapping.Processor(msg.Value, topicMapping.ResultProducer, server, logger)
+						if err == nil {
+							logger.Trace().Msg(fmt.Sprintf("Processing completed. Committing offset %d", msg.Offset))
+							if err := consumer.CommitMessages(ctx, msg); err != nil {
+								logger.Error().Msg(fmt.Sprintf("Failed to commit: %s", err))
+							}
+						} else {
+							logger.Error().Err(err).Msg("Processing failed. Not committing.")
+						}
+					}
+				}
+			}
+
+			// The below block will close the producer connection when the error threshold is reached.
+			// @TODO: Test to determine if this Close() impacts the other goroutines that were passed
+			// the same topicMappings before re-enabling this block.
+			//for _, topicMapping := range topicMappings {
+			//	logger.Trace().Msg(fmt.Sprintf("Closing producer connection %v", topicMapping))
+			//	if err := topicMapping.ResultProducer.Close(); err != nil {
+			//		logger.Error().Msg(fmt.Sprintf("Failed to close writer: %e", err))
+			//	}
+			//}
+		}(topicMappings)
 	}
 
 	return nil
