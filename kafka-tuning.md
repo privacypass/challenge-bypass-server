@@ -3,7 +3,7 @@
 ## Why Are We Still Tuning?
 
 - FFI on Intel Xeon Platinim 8259CL @2.50GHz processes around 700 records per second in a single thread when processing entirely local data.
-- In 4 days we observed 185 million records from the Kafka backlog processed as well as 250 million of regular traffic. That comes to about 1,250 per second across 700 processors, which is fewer than 2 per second per consumer on average.
+- In 4 days we observed 185 million records from the Kafka backlog processed as well as 250 million of regular traffic. That comes to about 1,250 per second across 700 processors, which is fewer than 2 per second per consumer on average while utilizing an average 6% of CPU.
 
 ## Starting Kafka Consumer Configuration
 
