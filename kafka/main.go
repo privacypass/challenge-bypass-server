@@ -21,11 +21,10 @@ var brokers []string
 type Processor func([]byte, *kafka.Writer, *server.Server, *zerolog.Logger) error
 
 type TopicMapping struct {
-	Topic                  string
-	ResultProducer         *kafka.Writer
-	OverflowResultProducer *kafka.Writer
-	Processor              Processor
-	Group                  string
+	Topic          string
+	ResultProducer *kafka.Writer
+	Processor      Processor
+	Group          string
 }
 
 func StartConsumers(server *server.Server, logger *zerolog.Logger) error {
@@ -33,34 +32,16 @@ func StartConsumers(server *server.Server, logger *zerolog.Logger) error {
 	adsResultRedeemV1Topic := os.Getenv("REDEEM_PRODUCER_TOPIC")
 	adsRequestSignV1Topic := os.Getenv("SIGN_CONSUMER_TOPIC")
 	adsResultSignV1Topic := os.Getenv("SIGN_PRODUCER_TOPIC")
-	//adsOverflowRequestSignV1Topic := os.Getenv("OVERFLOW_SIGN_PRODUCER_TOPIC")
-	adsOverflowRequestRedeemV1Topic := os.Getenv("OVERFLOW_REDEEM_PRODUCER_TOPIC")
 	adsConsumerGroupV1 := os.Getenv("CONSUMER_GROUP")
-	adsOverflowConsumerGroupV1 := os.Getenv("OVERFLOW_CONSUMER_GROUP")
-
-	var adsConsumersWillOverflow bool
-
-	if os.Getenv("ENABLE_OVERFLOW") == "" || os.Getenv("ENABLE_OVERFLOW") == "false" {
-		adsConsumersWillOverflow = false
-	} else {
-		adsConsumersWillOverflow = true
-	}
-
 	if len(brokers) < 1 {
 		brokers = strings.Split(os.Getenv("KAFKA_BROKERS"), ",")
 	}
-
 	topicMappings := []TopicMapping{
 		TopicMapping{
 			Topic: adsRequestRedeemV1Topic,
 			ResultProducer: kafka.NewWriter(kafka.WriterConfig{
 				Brokers: brokers,
 				Topic:   adsResultRedeemV1Topic,
-				Dialer:  getDialer(logger),
-			}),
-			OverflowResultProducer: kafka.NewWriter(kafka.WriterConfig{
-				Brokers: brokers,
-				Topic:   adsOverflowRequestRedeemV1Topic,
 				Dialer:  getDialer(logger),
 			}),
 			Processor: SignedTokenRedeemHandler,
@@ -73,20 +54,8 @@ func StartConsumers(server *server.Server, logger *zerolog.Logger) error {
 				Topic:   adsResultSignV1Topic,
 				Dialer:  getDialer(logger),
 			}),
-			OverflowResultProducer: nil,
 			Processor: SignedBlindedTokenIssuerHandler,
 			Group:     adsConsumerGroupV1,
-		},
-		TopicMapping{
-			Topic: adsOverflowRequestRedeemV1Topic,
-			ResultProducer: kafka.NewWriter(kafka.WriterConfig{
-				Brokers: brokers,
-				Topic:   adsResultSignV1Topic,
-				Dialer:  getDialer(logger),
-			}),
-			OverflowResultProducer: nil,
-			Processor:              SignedBlindedTokenIssuerHandler,
-			Group:                  adsOverflowConsumerGroupV1,
 		},
 	}
 	var topics []string
@@ -101,6 +70,7 @@ func StartConsumers(server *server.Server, logger *zerolog.Logger) error {
 	}
 
 	logger.Trace().Msg(fmt.Sprintf("Spawning %d consumer goroutines", consumerCount))
+
 	for i := 1; i <= consumerCount; i++ {
 		go func(topicMappings []TopicMapping) {
 			consumer := newConsumer(topics, adsConsumerGroupV1, logger)
@@ -123,26 +93,17 @@ func StartConsumers(server *server.Server, logger *zerolog.Logger) error {
 					continue
 				}
 				logger.Info().Msg(fmt.Sprintf("Processing message for topic %s at offset %d", msg.Topic, msg.Offset))
-				readerStats := consumer.Stats()
-				logger.Info().Msg(fmt.Sprintf("Reader Stats: %#v", readerStats))
+				logger.Info().Msg(fmt.Sprintf("Reader Stats: %#v", consumer.Stats()))
 				for _, topicMapping := range topicMappings {
 					if msg.Topic == topicMapping.Topic {
-						// If lag is really bad we should push excess to overflow
-						if readerStats.Lag > 1000 && adsConsumersWillOverflow && topicMapping.OverflowResultProducer != nil {
-							err = punt(ctx, consumer, topicMapping, msg, logger)
-							if err != nil {
-								logger.Error().Err(err).Msg(fmt.Sprintf("Failed to produce offset %d into overflow topic.", msg.Offset))
+						err := topicMapping.Processor(msg.Value, topicMapping.ResultProducer, server, logger)
+						if err == nil {
+							logger.Trace().Msg(fmt.Sprintf("Processing completed. Committing offset %d", msg.Offset))
+							if err := consumer.CommitMessages(ctx, msg); err != nil {
+								logger.Error().Msg(fmt.Sprintf("Failed to commit: %s", err))
 							}
 						} else {
-							err := topicMapping.Processor(msg.Value, topicMapping.ResultProducer, server, logger)
-							if err == nil {
-								logger.Trace().Msg(fmt.Sprintf("Processing completed. Committing offset %d", msg.Offset))
-								if err := consumer.CommitMessages(ctx, msg); err != nil {
-									logger.Error().Msg(fmt.Sprintf("Failed to commit: %s", err))
-								}
-							} else {
-								logger.Error().Err(err).Msg("Processing failed. Not committing.")
-							}
+							logger.Error().Err(err).Msg("Processing failed. Not committing.")
 						}
 					}
 				}
@@ -160,24 +121,6 @@ func StartConsumers(server *server.Server, logger *zerolog.Logger) error {
 		}(topicMappings)
 	}
 
-	return nil
-}
-
-func punt(
-	ctx context.Context,
-	consumer *kafka.Reader,
-	topicMapping TopicMapping,
-	msg kafka.Message,
-	logger *zerolog.Logger,
-) error {
-	err := Emit(topicMapping.OverflowResultProducer, msg.Value, logger)
-	if err != nil {
-		return err
-	}
-	if err := consumer.CommitMessages(ctx, msg); err != nil {
-		logger.Error().Msg(fmt.Sprintf("Failed to commit: %s", err))
-		return err
-	}
 	return nil
 }
 
