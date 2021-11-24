@@ -15,7 +15,7 @@ WORKDIR /src
 COPY go.mod .
 COPY go.sum .
 RUN go mod download
-COPY --from=rust_builder /src/target/x86_64-unknown-linux-musl/debug/libchallenge_bypass_ristretto.a /usr/lib/
+COPY --from=rust_builder /src/target/x86_64-unknown-linux-musl/release/libchallenge_bypass_ristretto.a /usr/lib/
 COPY . .
 RUN go build --ldflags '-extldflags "-static"' -o challenge-bypass-server main.go
 CMD ["/src/challenge-bypass-server"]
