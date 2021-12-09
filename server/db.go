@@ -542,40 +542,18 @@ func (c *Server) fetchRedemption(issuerType, ID string) (*Redemption, error) {
 }
 
 func setupConvertDBIssuer() func(issuer) (*Issuer, error) {
-	type IssuerCache struct {
-		lastFetch time.Time
-		issuer    Issuer
-	}
-	issuerCache := make(map[string]IssuerCache)
-	loc, _ := time.LoadLocation("UTC")
-
+	issuerCache := make(map[string]Issuer)
 	return func(issuer issuer) (*Issuer, error) {
 		stringifiedSigningKey := string(issuer.SigningKey)
 		if cachedIssuer, ok := issuerCache[stringifiedSigningKey]; ok {
-			// If the last fetch was more than 1 hour ago, refresh
-			if cachedIssuer.lastFetch.Before(time.Now().In(loc).Add(-1 * time.Hour)) {
-				parsedIssuer, err := parseIssuer(issuer)
-				if err != nil {
-					return nil, err
-				}
-				issuerCache[stringifiedSigningKey] = IssuerCache{
-					lastFetch: time.Now().In(loc),
-					issuer:    parsedIssuer,
-				}
-				return &parsedIssuer, nil
-			} else {
-				return &cachedIssuer.issuer, nil
-			}
-		} else {
 			parsedIssuer, err := parseIssuer(issuer)
 			if err != nil {
 				return nil, err
 			}
-			issuerCache[stringifiedSigningKey] = IssuerCache{
-				lastFetch: time.Now().In(loc),
-				issuer:    parsedIssuer,
-			}
+			issuerCache[stringifiedSigningKey] = parsedIssuer
 			return &parsedIssuer, nil
+		} else {
+			return &cachedIssuer, nil
 		}
 	}
 }
