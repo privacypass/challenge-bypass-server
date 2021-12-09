@@ -89,6 +89,7 @@ var (
 	errIssuerCohortNotFound = errors.New("Issuer with the given name and cohort does not exist")
 	errDuplicateRedemption  = errors.New("Duplicate Redemption")
 	errRedemptionNotFound   = errors.New("Redemption with the given id does not exist")
+	convertDBIssuer         = setupConvertDBIssuer()
 )
 
 // LoadDbConfig loads config into server variable
@@ -540,8 +541,25 @@ func (c *Server) fetchRedemption(issuerType, ID string) (*Redemption, error) {
 	return nil, errRedemptionNotFound
 }
 
-func convertDBIssuer(issuer issuer) (*Issuer, error) {
-	Issuer := Issuer{
+func setupConvertDBIssuer() func(issuer) (*Issuer, error) {
+	issuerCache := make(map[string]Issuer)
+	return func(issuer issuer) (*Issuer, error) {
+		stringifiedSigningKey := string(issuer.SigningKey)
+		if cachedIssuer, ok := issuerCache[stringifiedSigningKey]; ok {
+			parsedIssuer, err := parseIssuer(issuer)
+			if err != nil {
+				return nil, err
+			}
+			issuerCache[stringifiedSigningKey] = parsedIssuer
+			return &parsedIssuer, nil
+		} else {
+			return &cachedIssuer, nil
+		}
+	}
+}
+
+func parseIssuer(issuer issuer) (Issuer, error) {
+	parsedIssuer := Issuer{
 		ID:           issuer.ID,
 		IssuerType:   issuer.IssuerType,
 		IssuerCohort: issuer.IssuerCohort,
@@ -549,20 +567,19 @@ func convertDBIssuer(issuer issuer) (*Issuer, error) {
 		Version:      issuer.Version,
 	}
 	if issuer.ExpiresAt.Valid {
-		Issuer.ExpiresAt = issuer.ExpiresAt.Time
+		parsedIssuer.ExpiresAt = issuer.ExpiresAt.Time
 	}
 	if issuer.CreatedAt.Valid {
-		Issuer.CreatedAt = issuer.CreatedAt.Time
+		parsedIssuer.CreatedAt = issuer.CreatedAt.Time
 	}
 	if issuer.RotatedAt.Valid {
-		Issuer.RotatedAt = issuer.RotatedAt.Time
+		parsedIssuer.RotatedAt = issuer.RotatedAt.Time
 	}
 
-	Issuer.SigningKey = &crypto.SigningKey{}
-	err := Issuer.SigningKey.UnmarshalText(issuer.SigningKey)
+	parsedIssuer.SigningKey = &crypto.SigningKey{}
+	err := parsedIssuer.SigningKey.UnmarshalText(issuer.SigningKey)
 	if err != nil {
-		return nil, err
+		return Issuer{}, err
 	}
-
-	return &Issuer, nil
+	return parsedIssuer, nil
 }
