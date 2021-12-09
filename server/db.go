@@ -89,6 +89,7 @@ var (
 	errIssuerCohortNotFound = errors.New("Issuer with the given name and cohort does not exist")
 	errDuplicateRedemption  = errors.New("Duplicate Redemption")
 	errRedemptionNotFound   = errors.New("Redemption with the given id does not exist")
+	convertDBIssuer         = setupConvertDBIssuer()
 )
 
 // LoadDbConfig loads config into server variable
@@ -540,8 +541,47 @@ func (c *Server) fetchRedemption(issuerType, ID string) (*Redemption, error) {
 	return nil, errRedemptionNotFound
 }
 
-func convertDBIssuer(issuer issuer) (*Issuer, error) {
-	Issuer := Issuer{
+func setupConvertDBIssuer() func(issuer) (*Issuer, error) {
+	type IssuerCache struct {
+		lastFetch time.Time
+		issuer    Issuer
+	}
+	issuerCache := make(map[string]IssuerCache)
+	loc, _ := time.LoadLocation("UTC")
+
+	return func(issuer issuer) (*Issuer, error) {
+		stringifiedSigningKey := string(issuer.SigningKey)
+		if cachedIssuer, ok := issuerCache[stringifiedSigningKey]; ok {
+			// If the last fetch was more than 1 hour ago, refresh
+			if cachedIssuer.lastFetch.Before(time.Now().In(loc).Add(-1 * time.Hour)) {
+				parsedIssuer, err := parseIssuer(issuer)
+				if err != nil {
+					return nil, err
+				}
+				issuerCache[stringifiedSigningKey] = IssuerCache{
+					lastFetch: time.Now().In(loc),
+					issuer:    parsedIssuer,
+				}
+				return &parsedIssuer, nil
+			} else {
+				return &cachedIssuer.issuer, nil
+			}
+		} else {
+			parsedIssuer, err := parseIssuer(issuer)
+			if err != nil {
+				return nil, err
+			}
+			issuerCache[stringifiedSigningKey] = IssuerCache{
+				lastFetch: time.Now().In(loc),
+				issuer:    parsedIssuer,
+			}
+			return &parsedIssuer, nil
+		}
+	}
+}
+
+func parseIssuer(issuer issuer) (Issuer, error) {
+	parsedIssuer := Issuer{
 		ID:           issuer.ID,
 		IssuerType:   issuer.IssuerType,
 		IssuerCohort: issuer.IssuerCohort,
@@ -549,20 +589,19 @@ func convertDBIssuer(issuer issuer) (*Issuer, error) {
 		Version:      issuer.Version,
 	}
 	if issuer.ExpiresAt.Valid {
-		Issuer.ExpiresAt = issuer.ExpiresAt.Time
+		parsedIssuer.ExpiresAt = issuer.ExpiresAt.Time
 	}
 	if issuer.CreatedAt.Valid {
-		Issuer.CreatedAt = issuer.CreatedAt.Time
+		parsedIssuer.CreatedAt = issuer.CreatedAt.Time
 	}
 	if issuer.RotatedAt.Valid {
-		Issuer.RotatedAt = issuer.RotatedAt.Time
+		parsedIssuer.RotatedAt = issuer.RotatedAt.Time
 	}
 
-	Issuer.SigningKey = &crypto.SigningKey{}
-	err := Issuer.SigningKey.UnmarshalText(issuer.SigningKey)
+	parsedIssuer.SigningKey = &crypto.SigningKey{}
+	err := parsedIssuer.SigningKey.UnmarshalText(issuer.SigningKey)
 	if err != nil {
-		return nil, err
+		return Issuer{}, err
 	}
-
-	return &Issuer, nil
+	return parsedIssuer, nil
 }
