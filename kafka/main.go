@@ -96,14 +96,14 @@ func StartConsumers(server *server.Server, logger *zerolog.Logger) error {
 				logger.Info().Msg(fmt.Sprintf("Reader Stats: %#v", consumer.Stats()))
 				for _, topicMapping := range topicMappings {
 					if msg.Topic == topicMapping.Topic {
-						err := topicMapping.Processor(msg.Value, topicMapping.ResultProducer, server, logger)
-						if err == nil {
-							logger.Trace().Msg(fmt.Sprintf("Processing completed. Committing offset %d", msg.Offset))
-							if err := consumer.CommitMessages(ctx, msg); err != nil {
-								logger.Error().Msg(fmt.Sprintf("Failed to commit: %s", err))
+						go func() {
+							err := topicMapping.Processor(msg.Value, topicMapping.ResultProducer, server, logger)
+							if err != nil {
+								logger.Error().Err(err).Msg("Processing failed.")
 							}
-						} else {
-							logger.Error().Err(err).Msg("Processing failed. Not committing.")
+						}()
+						if err := consumer.CommitMessages(ctx, msg); err != nil {
+							logger.Error().Msg(fmt.Sprintf("Failed to commit: %s", err))
 						}
 					}
 				}
