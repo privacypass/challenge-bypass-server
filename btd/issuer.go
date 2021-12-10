@@ -73,6 +73,10 @@ func init() {
 // It returns an array of marshaled approved values along with a batch DLEQ proof.
 func ApproveTokens(blindedTokens []*crypto.BlindedToken, key *crypto.SigningKey) ([]*crypto.SignedToken, *crypto.BatchDLEQProof, error) {
 	var err error
+	if len(blindedTokens) < 1 {
+		err = errors.New("Provided blindedTokens array was empty.")
+		return []*crypto.SignedToken{}, nil, err
+	}
 
 	blindedTokenCounter.Add(float64(len(blindedTokens)))
 	signedTokens := make([]*crypto.SignedToken, len(blindedTokens))
