@@ -27,7 +27,7 @@ type TopicMapping struct {
 	Group          string
 }
 
-func StartConsumers(server *server.Server, logger *zerolog.Logger) error {
+func StartConsumers(providedServer *server.Server, logger *zerolog.Logger) error {
 	adsRequestRedeemV1Topic := os.Getenv("REDEEM_CONSUMER_TOPIC")
 	adsResultRedeemV1Topic := os.Getenv("REDEEM_PRODUCER_TOPIC")
 	adsRequestSignV1Topic := os.Getenv("SIGN_CONSUMER_TOPIC")
@@ -96,14 +96,24 @@ func StartConsumers(server *server.Server, logger *zerolog.Logger) error {
 				logger.Info().Msg(fmt.Sprintf("Reader Stats: %#v", consumer.Stats()))
 				for _, topicMapping := range topicMappings {
 					if msg.Topic == topicMapping.Topic {
-						err := topicMapping.Processor(msg.Value, topicMapping.ResultProducer, server, logger)
-						if err == nil {
-							logger.Trace().Msg(fmt.Sprintf("Processing completed. Committing offset %d", msg.Offset))
-							if err := consumer.CommitMessages(ctx, msg); err != nil {
-								logger.Error().Msg(fmt.Sprintf("Failed to commit: %s", err))
+						go func(
+							msg kafka.Message,
+							topicMapping TopicMapping,
+							providedServer *server.Server,
+							logger *zerolog.Logger,
+						) {
+							err := topicMapping.Processor(
+								msg.Value,
+								topicMapping.ResultProducer,
+								providedServer,
+								logger,
+							)
+							if err != nil {
+								logger.Error().Err(err).Msg("Processing failed.")
 							}
-						} else {
-							logger.Error().Err(err).Msg("Processing failed. Not committing.")
+						}(msg, topicMapping, providedServer, logger)
+						if err := consumer.CommitMessages(ctx, msg); err != nil {
+							logger.Error().Msg(fmt.Sprintf("Failed to commit: %s", err))
 						}
 					}
 				}
