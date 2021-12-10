@@ -89,6 +89,7 @@ var (
 	errIssuerCohortNotFound = errors.New("Issuer with the given name and cohort does not exist")
 	errDuplicateRedemption  = errors.New("Duplicate Redemption")
 	errRedemptionNotFound   = errors.New("Redemption with the given id does not exist")
+	convertDBIssuer         = setupConvertDBIssuer()
 )
 
 // LoadDbConfig loads config into server variable
