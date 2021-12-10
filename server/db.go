@@ -89,7 +89,6 @@ var (
 	errIssuerCohortNotFound = errors.New("Issuer with the given name and cohort does not exist")
 	errDuplicateRedemption  = errors.New("Duplicate Redemption")
 	errRedemptionNotFound   = errors.New("Redemption with the given id does not exist")
-	convertDBIssuer         = setupConvertDBIssuer()
 )
 
 // LoadDbConfig loads config into server variable
@@ -138,10 +137,12 @@ func (c *Server) InitDb() {
 	if cfg.CachingConfig.Enabled {
 		c.caches = make(map[string]CacheInterface)
 		defaultDuration := time.Duration(cfg.CachingConfig.ExpirationSec) * time.Second
+		convertedissuersDuration := time.Duration(1 * time.Hour)
 		c.caches["issuers"] = cache.New(defaultDuration, 2*defaultDuration)
 		c.caches["issuer"] = cache.New(defaultDuration, 2*defaultDuration)
 		c.caches["redemptions"] = cache.New(defaultDuration, 2*defaultDuration)
 		c.caches["issuercohort"] = cache.New(defaultDuration, 2*defaultDuration)
+		c.caches["convertedissuers"] = cache.New(convertedissuersDuration, 2*convertedissuersDuration)
 	}
 }
 
@@ -218,23 +219,23 @@ func (c *Server) fetchIssuer(issuerID string) (*Issuer, error) {
 		return nil, errIssuerNotFound
 	}
 
-	issuer, err := convertDBIssuer(fetchedIssuer)
+	convertedIssuer, err := c.convertDBIssuer(fetchedIssuer)
 	if err != nil {
 		return nil, err
 	}
 	queryTimer.ObserveDuration()
 
-	issuer.SigningKey = &crypto.SigningKey{}
-	err = issuer.SigningKey.UnmarshalText(fetchedIssuer.SigningKey)
+	convertedIssuer.SigningKey = &crypto.SigningKey{}
+	err = convertedIssuer.SigningKey.UnmarshalText(fetchedIssuer.SigningKey)
 	if err != nil {
 		return nil, err
 	}
 
 	if c.caches != nil {
-		c.caches["issuer"].SetDefault(issuerID, issuer)
+		c.caches["issuer"].SetDefault(issuerID, *convertedIssuer)
 	}
 
-	return issuer, nil
+	return convertedIssuer, nil
 }
 
 func (c *Server) fetchIssuersByCohort(issuerType string, issuerCohort int) (*[]Issuer, error) {
@@ -262,12 +263,12 @@ func (c *Server) fetchIssuersByCohort(issuerType string, issuerCohort int) (*[]I
 
 	issuers := []Issuer{}
 	for _, fetchedIssuer := range fetchedIssuers {
-		issuer, err := convertDBIssuer(fetchedIssuer)
+		convertedIssuer, err := c.convertDBIssuer(fetchedIssuer)
 		if err != nil {
 			return nil, err
 		}
 
-		issuers = append(issuers, *issuer)
+		issuers = append(issuers, *convertedIssuer)
 	}
 
 	if c.caches != nil {
@@ -301,12 +302,12 @@ func (c *Server) fetchIssuers(issuerType string) (*[]Issuer, error) {
 
 	issuers := []Issuer{}
 	for _, fetchedIssuer := range fetchedIssuers {
-		issuer, err := convertDBIssuer(fetchedIssuer)
+		convertedIssuer, err := c.convertDBIssuer(fetchedIssuer)
 		if err != nil {
 			return nil, err
 		}
 
-		issuers = append(issuers, *issuer)
+		issuers = append(issuers, *convertedIssuer)
 	}
 
 	if c.caches != nil {
@@ -330,13 +331,13 @@ func (c *Server) FetchAllIssuers() (*[]Issuer, error) {
 
 	issuers := []Issuer{}
 	for _, fetchedIssuer := range fetchedIssuers {
-		issuer, err := convertDBIssuer(fetchedIssuer)
+		convertedIssuer, err := c.convertDBIssuer(fetchedIssuer)
 		if err != nil {
 			c.Logger.Error("Error converting extracted Issuer")
 			return nil, err
 		}
 
-		issuers = append(issuers, *issuer)
+		issuers = append(issuers, *convertedIssuer)
 	}
 
 	return &issuers, nil
@@ -372,7 +373,7 @@ func (c *Server) rotateIssuers() error {
 	}
 
 	for _, fetchedIssuer := range fetchedIssuers {
-		issuer := Issuer{
+		rotationIssuer := Issuer{
 			ID:           fetchedIssuer.ID,
 			IssuerType:   fetchedIssuer.IssuerType,
 			IssuerCohort: fetchedIssuer.IssuerCohort,
@@ -383,8 +384,8 @@ func (c *Server) rotateIssuers() error {
 			Version:      fetchedIssuer.Version,
 		}
 
-		if issuer.MaxTokens == 0 {
-			issuer.MaxTokens = 40
+		if rotationIssuer.MaxTokens == 0 {
+			rotationIssuer.MaxTokens = 40
 		}
 
 		signingKey, err := crypto.RandomSigningKey()
@@ -399,11 +400,11 @@ func (c *Server) rotateIssuers() error {
 
 		if _, err = tx.Exec(
 			`INSERT INTO issuers(issuer_type, issuer_cohort, signing_key, max_tokens, expires_at, version) VALUES ($1, $2, $3, $4, $5, 2)`,
-			issuer.IssuerType,
-			issuer.IssuerCohort,
+			rotationIssuer.IssuerType,
+			rotationIssuer.IssuerCohort,
 			signingKeyTxt,
-			issuer.MaxTokens,
-			issuer.ExpiresAt.AddDate(0, 0, cfg.DefaultIssuerValidDays),
+			rotationIssuer.MaxTokens,
+			rotationIssuer.ExpiresAt.AddDate(0, 0, cfg.DefaultIssuerValidDays),
 		); err != nil {
 			return err
 		}
@@ -467,17 +468,17 @@ type Queryable interface {
 	Query(query string, args ...interface{}) (*sql.Rows, error)
 }
 
-func (c *Server) RedeemToken(issuer *Issuer, preimage *crypto.TokenPreimage, payload string) error {
+func (c *Server) RedeemToken(issuerForRedemption *Issuer, preimage *crypto.TokenPreimage, payload string) error {
 	defer incrementCounter(redeemTokenCounter)
-	if issuer.Version == 1 {
-		return redeemTokenWithDB(c.db, issuer.IssuerType, preimage, payload)
-	} else if issuer.Version == 2 {
-		return c.redeemTokenV2(issuer, preimage, payload)
+	if issuerForRedemption.Version == 1 {
+		return redeemTokenWithDB(c.db, issuerForRedemption.IssuerType, preimage, payload)
+	} else if issuerForRedemption.Version == 2 {
+		return c.redeemTokenV2(issuerForRedemption, preimage, payload)
 	}
 	return errors.New("Wrong Issuer Version")
 }
 
-func redeemTokenWithDB(db Queryable, issuer string, preimage *crypto.TokenPreimage, payload string) error {
+func redeemTokenWithDB(db Queryable, stringIssuer string, preimage *crypto.TokenPreimage, payload string) error {
 	preimageTxt, err := preimage.MarshalText()
 	if err != nil {
 		return err
@@ -485,7 +486,7 @@ func redeemTokenWithDB(db Queryable, issuer string, preimage *crypto.TokenPreima
 
 	queryTimer := prometheus.NewTimer(createRedemptionDBDuration)
 	rows, err := db.Query(
-		`INSERT INTO redemptions(id, issuer_type, ts, payload) VALUES ($1, $2, NOW(), $3)`, preimageTxt, issuer, payload)
+		`INSERT INTO redemptions(id, issuer_type, ts, payload) VALUES ($1, $2, NOW(), $3)`, preimageTxt, stringIssuer, payload)
 	if err != nil {
 		defer rows.Close()
 		if err, ok := err.(*pq.Error); ok && err.Code == "23505" { // unique constraint violation
@@ -541,43 +542,43 @@ func (c *Server) fetchRedemption(issuerType, ID string) (*Redemption, error) {
 	return nil, errRedemptionNotFound
 }
 
-func setupConvertDBIssuer() func(issuer) (*Issuer, error) {
-	issuerCache := make(map[string]Issuer)
-	return func(issuer issuer) (*Issuer, error) {
-		stringifiedSigningKey := string(issuer.SigningKey)
-		if cachedIssuer, ok := issuerCache[stringifiedSigningKey]; ok {
-			parsedIssuer, err := parseIssuer(issuer)
-			if err != nil {
-				return nil, err
-			}
-			issuerCache[stringifiedSigningKey] = parsedIssuer
-			return &parsedIssuer, nil
-		} else {
-			return &cachedIssuer, nil
+func (c *Server) convertDBIssuer(issuerToConvert issuer) (*Issuer, error) {
+	stringifiedSigningKey := string(issuerToConvert.SigningKey)
+	if c.caches != nil {
+		if cached, found := c.caches["convertedissuers"].Get(stringifiedSigningKey); found {
+			return cached.(*Issuer), nil
 		}
 	}
+	parsedIssuer, err := parseIssuer(issuerToConvert)
+	if err != nil {
+		return nil, err
+	}
+	if c.caches != nil {
+		c.caches["issuer"].SetDefault(stringifiedSigningKey, parseIssuer)
+	}
+	return &parsedIssuer, nil
 }
 
-func parseIssuer(issuer issuer) (Issuer, error) {
+func parseIssuer(issuerToParse issuer) (Issuer, error) {
 	parsedIssuer := Issuer{
-		ID:           issuer.ID,
-		IssuerType:   issuer.IssuerType,
-		IssuerCohort: issuer.IssuerCohort,
-		MaxTokens:    issuer.MaxTokens,
-		Version:      issuer.Version,
+		ID:           issuerToParse.ID,
+		IssuerType:   issuerToParse.IssuerType,
+		IssuerCohort: issuerToParse.IssuerCohort,
+		MaxTokens:    issuerToParse.MaxTokens,
+		Version:      issuerToParse.Version,
 	}
-	if issuer.ExpiresAt.Valid {
-		parsedIssuer.ExpiresAt = issuer.ExpiresAt.Time
+	if issuerToParse.ExpiresAt.Valid {
+		parsedIssuer.ExpiresAt = issuerToParse.ExpiresAt.Time
 	}
-	if issuer.CreatedAt.Valid {
-		parsedIssuer.CreatedAt = issuer.CreatedAt.Time
+	if issuerToParse.CreatedAt.Valid {
+		parsedIssuer.CreatedAt = issuerToParse.CreatedAt.Time
 	}
-	if issuer.RotatedAt.Valid {
-		parsedIssuer.RotatedAt = issuer.RotatedAt.Time
+	if issuerToParse.RotatedAt.Valid {
+		parsedIssuer.RotatedAt = issuerToParse.RotatedAt.Time
 	}
 
 	parsedIssuer.SigningKey = &crypto.SigningKey{}
-	err := parsedIssuer.SigningKey.UnmarshalText(issuer.SigningKey)
+	err := parsedIssuer.SigningKey.UnmarshalText(issuerToParse.SigningKey)
 	if err != nil {
 		return Issuer{}, err
 	}
