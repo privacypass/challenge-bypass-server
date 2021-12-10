@@ -218,24 +218,23 @@ func (c *Server) fetchIssuer(issuerID string) (*Issuer, error) {
 		return nil, errIssuerNotFound
 	}
 
-	ownedIssuer, err := convertDBIssuer(fetchedIssuer)
+	convertedIssuer, err := convertDBIssuer(fetchedIssuer)
 	if err != nil {
 		return nil, err
 	}
-        issuerPointer := &ownedIssuer
 	queryTimer.ObserveDuration()
 
-	issuerPointer.SigningKey = &crypto.SigningKey{}
-	err = issuerPointer.SigningKey.UnmarshalText(fetchedIssuer.SigningKey)
+	convertedIssuer.SigningKey = &crypto.SigningKey{}
+	err = convertedIssuer.SigningKey.UnmarshalText(fetchedIssuer.SigningKey)
 	if err != nil {
 		return nil, err
 	}
 
 	if c.caches != nil {
-		c.caches["issuer"].SetDefault(issuerID, issuerPointer)
+		c.caches["issuer"].SetDefault(issuerID, convertedIssuer)
 	}
 
-	return issuerPointer, nil
+	return &convertedIssuer, nil
 }
 
 func (c *Server) fetchIssuersByCohort(issuerType string, issuerCohort int) (*[]Issuer, error) {
@@ -263,13 +262,12 @@ func (c *Server) fetchIssuersByCohort(issuerType string, issuerCohort int) (*[]I
 
 	issuers := []Issuer{}
 	for _, fetchedIssuer := range fetchedIssuers {
-		ownedIssuer, err := convertDBIssuer(fetchedIssuer)
+		convertedIssuer, err := convertDBIssuer(fetchedIssuer)
 		if err != nil {
 			return nil, err
 		}
-                issuerPointer := &ownedIssuer
 
-		issuers = append(issuers, *issuerPointer)
+		issuers = append(issuers, convertedIssuer)
 	}
 
 	if c.caches != nil {
@@ -303,13 +301,12 @@ func (c *Server) fetchIssuers(issuerType string) (*[]Issuer, error) {
 
 	issuers := []Issuer{}
 	for _, fetchedIssuer := range fetchedIssuers {
-		ownedIssuer, err := convertDBIssuer(fetchedIssuer)
+		convertedIssuer, err := convertDBIssuer(fetchedIssuer)
 		if err != nil {
 			return nil, err
 		}
-                issuerPointer := &ownedIssuer
 
-		issuers = append(issuers, *issuerPointer)
+		issuers = append(issuers, convertedIssuer)
 	}
 
 	if c.caches != nil {
@@ -333,14 +330,13 @@ func (c *Server) FetchAllIssuers() (*[]Issuer, error) {
 
 	issuers := []Issuer{}
 	for _, fetchedIssuer := range fetchedIssuers {
-		ownedIssuer, err := convertDBIssuer(fetchedIssuer)
+		convertedIssuer, err := convertDBIssuer(fetchedIssuer)
 		if err != nil {
 			c.Logger.Error("Error converting extracted Issuer")
 			return nil, err
 		}
-                issuerPointer := &ownedIssuer
 
-		issuers = append(issuers, *issuerPointer)
+		issuers = append(issuers, convertedIssuer)
 	}
 
 	return &issuers, nil
