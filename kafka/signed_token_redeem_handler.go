@@ -46,6 +46,10 @@ func SignedTokenRedeemHandler(
 		// errors and return values as well.
 		return errors.New(fmt.Sprintf("Request %s: Data array unexpectedly contained more than a single message. This array is intended to make future extension easier, but no more than a single value is currently expected.", tokenRedeemRequestSet.Request_id))
 	}
+	issuers, err := server.FetchAllIssuers()
+	if err != nil {
+		return errors.New(fmt.Sprintf("Request %s: Failed to fetch all issuers", tokenRedeemRequestSet.Request_id))
+	}
 	for _, request := range tokenRedeemRequestSet.Data {
 		var (
 			verified             = false
@@ -74,10 +78,6 @@ func SignedTokenRedeemHandler(
 			continue
 		}
 
-		issuers, err := server.FetchAllIssuers()
-		if err != nil {
-			return errors.New(fmt.Sprintf("Request %s: Failed to fetch all issuers", tokenRedeemRequestSet.Request_id))
-		}
 		tokenPreimage := crypto.TokenPreimage{}
 		err = tokenPreimage.UnmarshalText([]byte(request.Token_preimage))
 		if err != nil {
