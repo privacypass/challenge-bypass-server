@@ -89,7 +89,6 @@ var (
 	errIssuerCohortNotFound = errors.New("Issuer with the given name and cohort does not exist")
 	errDuplicateRedemption  = errors.New("Duplicate Redemption")
 	errRedemptionNotFound   = errors.New("Redemption with the given id does not exist")
-	convertDBIssuer         = setupConvertDBIssuer()
 )
 
 // LoadDbConfig loads config into server variable
@@ -138,10 +137,12 @@ func (c *Server) InitDb() {
 	if cfg.CachingConfig.Enabled {
 		c.caches = make(map[string]CacheInterface)
 		defaultDuration := time.Duration(cfg.CachingConfig.ExpirationSec) * time.Second
+		convertedissuersDuration := time.Duration(1 * time.Hour)
 		c.caches["issuers"] = cache.New(defaultDuration, 2*defaultDuration)
 		c.caches["issuer"] = cache.New(defaultDuration, 2*defaultDuration)
 		c.caches["redemptions"] = cache.New(defaultDuration, 2*defaultDuration)
 		c.caches["issuercohort"] = cache.New(defaultDuration, 2*defaultDuration)
+		c.caches["convertedissuers"] = cache.New(convertedissuersDuration, 2*convertedissuersDuration)
 	}
 }
 
@@ -218,7 +219,7 @@ func (c *Server) fetchIssuer(issuerID string) (*Issuer, error) {
 		return nil, errIssuerNotFound
 	}
 
-	convertedIssuer, err := convertDBIssuer(fetchedIssuer)
+	convertedIssuer, err := c.convertDBIssuer(fetchedIssuer)
 	if err != nil {
 		return nil, err
 	}
@@ -231,10 +232,10 @@ func (c *Server) fetchIssuer(issuerID string) (*Issuer, error) {
 	}
 
 	if c.caches != nil {
-		c.caches["issuer"].SetDefault(issuerID, convertedIssuer)
+		c.caches["issuer"].SetDefault(issuerID, *convertedIssuer)
 	}
 
-	return &convertedIssuer, nil
+	return convertedIssuer, nil
 }
 
 func (c *Server) fetchIssuersByCohort(issuerType string, issuerCohort int) (*[]Issuer, error) {
@@ -262,12 +263,12 @@ func (c *Server) fetchIssuersByCohort(issuerType string, issuerCohort int) (*[]I
 
 	issuers := []Issuer{}
 	for _, fetchedIssuer := range fetchedIssuers {
-		convertedIssuer, err := convertDBIssuer(fetchedIssuer)
+		convertedIssuer, err := c.convertDBIssuer(fetchedIssuer)
 		if err != nil {
 			return nil, err
 		}
 
-		issuers = append(issuers, convertedIssuer)
+		issuers = append(issuers, *convertedIssuer)
 	}
 
 	if c.caches != nil {
@@ -301,12 +302,12 @@ func (c *Server) fetchIssuers(issuerType string) (*[]Issuer, error) {
 
 	issuers := []Issuer{}
 	for _, fetchedIssuer := range fetchedIssuers {
-		convertedIssuer, err := convertDBIssuer(fetchedIssuer)
+		convertedIssuer, err := c.convertDBIssuer(fetchedIssuer)
 		if err != nil {
 			return nil, err
 		}
 
-		issuers = append(issuers, convertedIssuer)
+		issuers = append(issuers, *convertedIssuer)
 	}
 
 	if c.caches != nil {
@@ -330,13 +331,13 @@ func (c *Server) FetchAllIssuers() (*[]Issuer, error) {
 
 	issuers := []Issuer{}
 	for _, fetchedIssuer := range fetchedIssuers {
-		convertedIssuer, err := convertDBIssuer(fetchedIssuer)
+		convertedIssuer, err := c.convertDBIssuer(fetchedIssuer)
 		if err != nil {
 			c.Logger.Error("Error converting extracted Issuer")
 			return nil, err
 		}
 
-		issuers = append(issuers, convertedIssuer)
+		issuers = append(issuers, *convertedIssuer)
 	}
 
 	return &issuers, nil
@@ -541,21 +542,21 @@ func (c *Server) fetchRedemption(issuerType, ID string) (*Redemption, error) {
 	return nil, errRedemptionNotFound
 }
 
-func setupConvertDBIssuer() func(issuer) (Issuer, error) {
-	issuerCache := make(map[string]Issuer)
-	return func(issuerToConvert issuer) (Issuer, error) {
-		stringifiedSigningKey := string(issuerToConvert.SigningKey)
-		if cachedIssuer, ok := issuerCache[stringifiedSigningKey]; ok {
-			parsedIssuer, err := parseIssuer(issuerToConvert)
-			if err != nil {
-				return Issuer{}, err
-			}
-			issuerCache[stringifiedSigningKey] = parsedIssuer
-			return parsedIssuer, nil
-		} else {
-			return cachedIssuer, nil
+func (c *Server) convertDBIssuer(issuerToConvert issuer) (*Issuer, error) {
+	stringifiedSigningKey := string(issuerToConvert.SigningKey)
+	if c.caches != nil {
+		if cached, found := c.caches["convertedissuers"].Get(stringifiedSigningKey); found {
+			return cached.(*Issuer), nil
 		}
 	}
+	parsedIssuer, err := parseIssuer(issuerToConvert)
+	if err != nil {
+		return nil, err
+	}
+	if c.caches != nil {
+		c.caches["issuer"].SetDefault(stringifiedSigningKey, parseIssuer)
+	}
+	return &parsedIssuer, nil
 }
 
 func parseIssuer(issuerToParse issuer) (Issuer, error) {
