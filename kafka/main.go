@@ -3,9 +3,11 @@ package kafka
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	batgo_kafka "github.com/brave-intl/bat-go/utils/kafka"
@@ -18,7 +20,28 @@ import (
 
 var brokers []string
 
-type Processor func([]byte, *kafka.Writer, *server.Server, *zerolog.Logger) error
+type Processor func(
+	[]byte,
+	*kafka.Writer,
+	*server.Server,
+	chan *ProcessingError,
+	*zerolog.Logger,
+) *ProcessingError
+
+type ProcessingError struct {
+	Cause     error
+	Message   string
+	Temporary bool
+}
+
+// Error makes ProcessingError an error
+func (e ProcessingError) Error() string {
+	msg := fmt.Sprintf("error: %s", e.Message)
+	if e.Cause != nil {
+		msg = fmt.Sprintf("%s: %s", msg, e.Cause)
+	}
+	return msg
+}
 
 type TopicMapping struct {
 	Topic          string
@@ -71,67 +94,87 @@ func StartConsumers(providedServer *server.Server, logger *zerolog.Logger) error
 
 	logger.Trace().Msg(fmt.Sprintf("Spawning %d consumer goroutines", consumerCount))
 
-	for i := 1; i <= consumerCount; i++ {
-		go func(topicMappings []TopicMapping) {
-			consumer := newConsumer(topics, adsConsumerGroupV1, logger)
-			var (
-				failureCount = 0
-				failureLimit = 10
-			)
-			logger.Trace().Msg("Beginning message processing")
-			for {
-				// `FetchMessage` blocks until the next event. Do not block main.
-				ctx := context.Background()
-				logger.Trace().Msg(fmt.Sprintf("Fetching messages from Kafka"))
-				msg, err := consumer.FetchMessage(ctx)
-				if err != nil {
-					logger.Error().Err(err).Msg("")
-					if failureCount > failureLimit {
-						break
-					}
-					failureCount++
-					continue
-				}
-				logger.Info().Msg(fmt.Sprintf("Processing message for topic %s at offset %d", msg.Topic, msg.Offset))
-				logger.Info().Msg(fmt.Sprintf("Reader Stats: %#v", consumer.Stats()))
-				for _, topicMapping := range topicMappings {
-					if msg.Topic == topicMapping.Topic {
-						go func(
-							msg kafka.Message,
-							topicMapping TopicMapping,
-							providedServer *server.Server,
-							logger *zerolog.Logger,
-						) {
-							err := topicMapping.Processor(
-								msg.Value,
-								topicMapping.ResultProducer,
-								providedServer,
-								logger,
-							)
-							if err != nil {
-								logger.Error().Err(err).Msg("Processing failed.")
-							}
-						}(msg, topicMapping, providedServer, logger)
-						if err := consumer.CommitMessages(ctx, msg); err != nil {
-							logger.Error().Msg(fmt.Sprintf("Failed to commit: %s", err))
-						}
-					}
+	reader := newConsumer(topics, adsConsumerGroupV1, logger)
+	if err != nil {
+		return err
+	}
+	logger.Trace().Msg("Beginning message processing")
+	for {
+		logger.Trace().Msg(fmt.Sprintf("Fetching messages from Kafka"))
+		var (
+			wg      sync.WaitGroup
+			results = make(chan *ProcessingError)
+		)
+		// Any error that occurs while getting the batch won't be available until
+		// the Close() call.
+		ctx := context.Background()
+		batch, err := batchFromReader(ctx, reader, 20, logger)
+		if err != nil {
+			// This should be an app error that needs to communicate if its failure is
+			// temporary or permanent. If temporary we need to handle it and if
+			// permanent we need to commit and move on.
+		}
+	BatchProcessingLoop:
+		for _, msg := range batch {
+			wg.Add(1)
+			if err != nil {
+				// Indicates batch has no more messages. End the loop for
+				// this batch and fetch another.
+				if err == io.EOF {
+					break BatchProcessingLoop
 				}
 			}
-
-			// The below block will close the producer connection when the error threshold is reached.
-			// @TODO: Test to determine if this Close() impacts the other goroutines that were passed
-			// the same topicMappings before re-enabling this block.
-			//for _, topicMapping := range topicMappings {
-			//	logger.Trace().Msg(fmt.Sprintf("Closing producer connection %v", topicMapping))
-			//	if err := topicMapping.ResultProducer.Close(); err != nil {
-			//		logger.Error().Msg(fmt.Sprintf("Failed to close writer: %e", err))
-			//	}
-			//}
-		}(topicMappings)
+			logger.Info().Msg(fmt.Sprintf("Processing message for topic %s at offset %d", msg.Topic, msg.Offset))
+			logger.Info().Msg(fmt.Sprintf("Reader Stats: %#v", reader.Stats()))
+			// Check if any of the existing topicMappings match the fetched message
+			for _, topicMapping := range topicMappings {
+				if msg.Topic == topicMapping.Topic {
+					go func(
+						msg kafka.Message,
+						topicMapping TopicMapping,
+						providedServer *server.Server,
+						logger *zerolog.Logger,
+					) {
+						defer wg.Done()
+						err := topicMapping.Processor(
+							msg.Value,
+							topicMapping.ResultProducer,
+							providedServer,
+							results,
+							logger,
+						)
+						if err != nil {
+							logger.Error().Err(err).Msg("Processing failed.")
+							results <- err
+						}
+					}(msg, topicMapping, providedServer, logger)
+				}
+			}
+		}
 	}
 
 	return nil
+}
+
+// Pull messages out of the Reader's underlying batch so that they can be processed in parallel
+// There is an ongoing discussion of batch message processing implementations with this
+// library here: https://github.com/segmentio/kafka-go/issues/123
+func batchFromReader(ctx context.Context, reader *kafka.Reader, count int, logger *zerolog.Logger) ([]kafka.Message, error) {
+	var (
+		messages []kafka.Message
+		err      error
+	)
+	for i := 0; i < count; i++ {
+		message, err := reader.FetchMessage(ctx)
+		if err != nil {
+			if err == io.EOF {
+				logger.Trace().Msg("Batch complete")
+			}
+			continue
+		}
+		messages = append(messages, message)
+	}
+	return messages, err
 }
 
 // NewConsumer returns a Kafka reader configured for the given topic and group.
@@ -152,7 +195,7 @@ func newConsumer(topics []string, groupId string, logger *zerolog.Logger) *kafka
 		MinBytes:       1e3,              // 1KB
 		MaxBytes:       10e6,             // 10MB
 	})
-	logger.Trace().Msg(fmt.Sprintf("Reader create with subscription"))
+	logger.Trace().Msg(fmt.Sprintf("Reader created with subscription"))
 	return reader
 }
 
