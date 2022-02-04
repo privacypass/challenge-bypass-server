@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -21,7 +22,7 @@ import (
 var brokers []string
 
 type Processor func(
-	[]byte,
+	kafka.Message,
 	*kafka.Writer,
 	*server.Server,
 	chan *ProcessingError,
@@ -29,14 +30,15 @@ type Processor func(
 ) *ProcessingError
 
 type ProcessingError struct {
-	Cause     error
-	Message   string
-	Temporary bool
+	Cause          error
+	FailureMessage string
+	Temporary      bool
+	KafkaMessage   kafka.Message
 }
 
 // Error makes ProcessingError an error
 func (e ProcessingError) Error() string {
-	msg := fmt.Sprintf("error: %s", e.Message)
+	msg := fmt.Sprintf("error: %s", e.FailureMessage)
 	if e.Cause != nil {
 		msg = fmt.Sprintf("%s: %s", msg, e.Cause)
 	}
@@ -99,6 +101,13 @@ func StartConsumers(providedServer *server.Server, logger *zerolog.Logger) error
 		return err
 	}
 	logger.Trace().Msg("Beginning message processing")
+	// `kafka-go` exposes messages one at a time through its normal interfaces despite
+	// collecting messages with batching from Kafka. To process these messages in
+	// parallel we use the `FetchMessage` method in a loop to collect a set of messages
+	// for processing. Successes and permanent failures are committed and temporary
+	// failures are not committed and are retried. Miscategorization of errors can
+	// cause the consumer to become stuck forever, so it's important that permanent
+	// failures are not categorized as temporary.
 	for {
 		logger.Trace().Msg(fmt.Sprintf("Fetching messages from Kafka"))
 		var (
@@ -126,9 +135,11 @@ func StartConsumers(providedServer *server.Server, logger *zerolog.Logger) error
 			}
 			logger.Info().Msg(fmt.Sprintf("Processing message for topic %s at offset %d", msg.Topic, msg.Offset))
 			logger.Info().Msg(fmt.Sprintf("Reader Stats: %#v", reader.Stats()))
+			wgDoneDeferred := false
 			// Check if any of the existing topicMappings match the fetched message
 			for _, topicMapping := range topicMappings {
 				if msg.Topic == topicMapping.Topic {
+					wgDoneDeferred = true
 					go func(
 						msg kafka.Message,
 						topicMapping TopicMapping,
@@ -137,7 +148,7 @@ func StartConsumers(providedServer *server.Server, logger *zerolog.Logger) error
 					) {
 						defer wg.Done()
 						err := topicMapping.Processor(
-							msg.Value,
+							msg,
 							topicMapping.ResultProducer,
 							providedServer,
 							results,
@@ -149,6 +160,48 @@ func StartConsumers(providedServer *server.Server, logger *zerolog.Logger) error
 						}
 					}(msg, topicMapping, providedServer, logger)
 				}
+			}
+			// If the topic in the message doesn't match andy of the topicMappings
+			// then the goroutine will not be spawned and wg.Done() won't be
+			// called. If this happens, be sure to call it.
+			if !wgDoneDeferred {
+				wg.Done()
+			}
+		}
+		// Iterate over any failures and get the earliest temporary failure offset
+		var temporaryErrors []*ProcessingError
+		for processingError := range results {
+			if processingError.Temporary {
+				continue
+			} else {
+				temporaryErrors = append(temporaryErrors, processingError)
+			}
+		}
+		// If there are temporary errors, sort them so that the first item in the
+		// has the lowest offset. Only run sort if there is more than one temporary
+		// error.
+		if len(temporaryErrors) > 0 {
+			if len(temporaryErrors) > 1 {
+				sort.Slice(temporaryErrors, func(i, j int) bool {
+					return temporaryErrors[i].KafkaMessage.Offset < temporaryErrors[j].KafkaMessage.Offset
+				})
+			}
+			// Iterate over the batch to find the message that came before the first
+			// temporary failure and commit it. This will ensure that the temporary
+			// failure is picked up as the first item in the next batch.
+			for _, message := range batch {
+				if message.Offset == temporaryErrors[0].KafkaMessage.Offset-1 {
+					if err := reader.CommitMessages(ctx, message); err != nil {
+						logger.Error().Msg(fmt.Sprintf("Failed to commit: %s", err))
+					}
+				}
+			}
+		} else {
+			sort.Slice(batch, func(i, j int) bool {
+				return batch[i].Offset < batch[j].Offset
+			})
+			if err := reader.CommitMessages(ctx, batch[0]); err != nil {
+				logger.Error().Msg(fmt.Sprintf("Failed to commit: %s", err))
 			}
 		}
 	}

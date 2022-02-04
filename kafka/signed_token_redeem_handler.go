@@ -20,7 +20,7 @@ import (
  tokens provided.
 */
 func SignedTokenRedeemHandler(
-	data []byte,
+	msg kafka.Message,
 	producer *kafka.Writer,
 	server *cbpServer.Server,
 	results chan *ProcessingError,
@@ -32,12 +32,14 @@ func SignedTokenRedeemHandler(
 		UNVERIFIED           = 2
 		ERROR                = 3
 	)
+	data := msg.Value
 	tokenRedeemRequestSet, err := avroSchema.DeserializeRedeemRequestSet(bytes.NewReader(data))
 	if err != nil {
 		return &ProcessingError{
-			Cause:     err,
-			Message:   fmt.Sprintf("Request %s: Failed Avro deserialization", tokenRedeemRequestSet.Request_id),
-			Temporary: false,
+			Cause:          err,
+			FailureMessage: fmt.Sprintf("Request %s: Failed Avro deserialization", tokenRedeemRequestSet.Request_id),
+			Temporary:      false,
+			KafkaMessage:   msg,
 		}
 	}
 	defer func() {
@@ -51,18 +53,20 @@ func SignedTokenRedeemHandler(
 		// errors and return values as well.
 		message := fmt.Sprintf("Request %s: Data array unexpectedly contained more than a single message. This array is intended to make future extension easier, but no more than a single value is currently expected.", tokenRedeemRequestSet.Request_id)
 		return &ProcessingError{
-			Cause:     errors.New(message),
-			Message:   message,
-			Temporary: false,
+			Cause:          errors.New(message),
+			FailureMessage: message,
+			Temporary:      false,
+			KafkaMessage:   msg,
 		}
 	}
 	issuers, err := server.FetchAllIssuers()
 	if err != nil {
 		message := fmt.Sprintf("Request %s: Failed to fetch all issuers", tokenRedeemRequestSet.Request_id)
 		return &ProcessingError{
-			Cause:     errors.New(message),
-			Message:   message,
-			Temporary: false,
+			Cause:          errors.New(message),
+			FailureMessage: message,
+			Temporary:      false,
+			KafkaMessage:   msg,
 		}
 	}
 	for _, request := range tokenRedeemRequestSet.Data {
@@ -98,9 +102,10 @@ func SignedTokenRedeemHandler(
 		if err != nil {
 			message := fmt.Sprintf("Request %s: Could not unmarshal text into preimage", tokenRedeemRequestSet.Request_id)
 			return &ProcessingError{
-				Cause:     err,
-				Message:   message,
-				Temporary: false,
+				Cause:          err,
+				FailureMessage: message,
+				Temporary:      false,
+				KafkaMessage:   msg,
 			}
 		}
 		verificationSignature := crypto.VerificationSignature{}
@@ -108,9 +113,10 @@ func SignedTokenRedeemHandler(
 		if err != nil {
 			message := fmt.Sprintf("Request %s: Could not unmarshal text into verification signature", tokenRedeemRequestSet.Request_id)
 			return &ProcessingError{
-				Cause:     err,
-				Message:   message,
-				Temporary: false,
+				Cause:          err,
+				FailureMessage: message,
+				Temporary:      false,
+				KafkaMessage:   msg,
 			}
 		}
 		for _, issuer := range *issuers {
@@ -123,9 +129,10 @@ func SignedTokenRedeemHandler(
 			if err != nil {
 				message := fmt.Sprintf("Request %s: Could not unmarshal issuer public key into text", tokenRedeemRequestSet.Request_id)
 				return &ProcessingError{
-					Cause:     err,
-					Message:   message,
-					Temporary: false,
+					Cause:          err,
+					FailureMessage: message,
+					Temporary:      false,
+					KafkaMessage:   msg,
 				}
 			}
 			logger.Trace().Msg(fmt.Sprintf("Request %s: Issuer: %s, Request: %s", tokenRedeemRequestSet.Request_id, string(marshaledPublicKey), request.Public_key))
@@ -196,9 +203,10 @@ func SignedTokenRedeemHandler(
 	if err != nil {
 		message := fmt.Sprintf("Request %s: Failed to serialize ResultSet", tokenRedeemRequestSet.Request_id)
 		return &ProcessingError{
-			Cause:     err,
-			Message:   message,
-			Temporary: false,
+			Cause:          err,
+			FailureMessage: message,
+			Temporary:      false,
+			KafkaMessage:   msg,
 		}
 	}
 
@@ -206,9 +214,10 @@ func SignedTokenRedeemHandler(
 	if err != nil {
 		message := fmt.Sprintf("Request %s: Failed to emit results to topic %s", tokenRedeemRequestSet.Request_id, producer.Topic)
 		return &ProcessingError{
-			Cause:     err,
-			Message:   message,
-			Temporary: false,
+			Cause:          err,
+			FailureMessage: message,
+			Temporary:      false,
+			KafkaMessage:   msg,
 		}
 	}
 	return nil

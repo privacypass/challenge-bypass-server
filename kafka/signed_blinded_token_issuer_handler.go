@@ -20,7 +20,7 @@ import (
  as an argument here. That will require a bit of refactoring.
 */
 func SignedBlindedTokenIssuerHandler(
-	data []byte,
+	msg kafka.Message,
 	producer *kafka.Writer,
 	server *cbpServer.Server,
 	results chan *ProcessingError,
@@ -31,6 +31,7 @@ func SignedBlindedTokenIssuerHandler(
 		INVALID_ISSUER = 1
 		ERROR          = 2
 	)
+	data := msg.Value
 	blindedTokenRequestSet, err := avroSchema.DeserializeSigningRequestSet(bytes.NewReader(data))
 	if err != nil {
 		message := fmt.Sprintf(
@@ -38,9 +39,10 @@ func SignedBlindedTokenIssuerHandler(
 			blindedTokenRequestSet.Request_id,
 		)
 		return &ProcessingError{
-			Cause:     err,
-			Message:   message,
-			Temporary: false,
+			Cause:          err,
+			FailureMessage: message,
+			Temporary:      false,
+			KafkaMessage:   msg,
 		}
 	}
 	var blindedTokenResults []avroSchema.SigningResult
@@ -52,9 +54,10 @@ func SignedBlindedTokenIssuerHandler(
 			blindedTokenRequestSet.Request_id,
 		)
 		return &ProcessingError{
-			Cause:     errors.New(message),
-			Message:   message,
-			Temporary: false,
+			Cause:          errors.New(message),
+			FailureMessage: message,
+			Temporary:      false,
+			KafkaMessage:   msg,
 		}
 	}
 	for _, request := range blindedTokenRequestSet.Data {
@@ -129,9 +132,10 @@ func SignedBlindedTokenIssuerHandler(
 				blindedTokenRequestSet.Request_id,
 			)
 			return &ProcessingError{
-				Cause:     err,
-				Message:   message,
-				Temporary: false,
+				Cause:          err,
+				FailureMessage: message,
+				Temporary:      false,
+				KafkaMessage:   msg,
 			}
 		}
 		var marshaledTokens []string
@@ -143,9 +147,10 @@ func SignedBlindedTokenIssuerHandler(
 					blindedTokenRequestSet.Request_id,
 				)
 				return &ProcessingError{
-					Cause:     err,
-					Message:   message,
-					Temporary: false,
+					Cause:          err,
+					FailureMessage: message,
+					Temporary:      false,
+					KafkaMessage:   msg,
 				}
 			}
 			marshaledTokens = append(marshaledTokens, string(marshaledToken[:]))
@@ -158,9 +163,10 @@ func SignedBlindedTokenIssuerHandler(
 				blindedTokenRequestSet.Request_id,
 			)
 			return &ProcessingError{
-				Cause:     err,
-				Message:   message,
-				Temporary: false,
+				Cause:          err,
+				FailureMessage: message,
+				Temporary:      false,
+				KafkaMessage:   msg,
 			}
 		}
 		blindedTokenResults = append(blindedTokenResults, avroSchema.SigningResult{
@@ -184,9 +190,10 @@ func SignedBlindedTokenIssuerHandler(
 			resultSet,
 		)
 		return &ProcessingError{
-			Cause:     err,
-			Message:   message,
-			Temporary: false,
+			Cause:          err,
+			FailureMessage: message,
+			Temporary:      false,
+			KafkaMessage:   msg,
 		}
 	}
 	err = Emit(producer, resultSetBuffer.Bytes(), logger)
@@ -197,9 +204,10 @@ func SignedBlindedTokenIssuerHandler(
 			producer.Topic,
 		)
 		return &ProcessingError{
-			Cause:     err,
-			Message:   message,
-			Temporary: false,
+			Cause:          err,
+			FailureMessage: message,
+			Temporary:      false,
+			KafkaMessage:   msg,
 		}
 	}
 	return nil
