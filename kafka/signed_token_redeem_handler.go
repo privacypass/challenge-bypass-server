@@ -17,11 +17,14 @@ import (
 
 /*
  BlindedTokenRedeemHandler emits payment tokens that correspond to the signed confirmation
- tokens provided.
+ tokens provided. If it encounters an error, it returns a ProcessingError that indicates
+ whether the error is temporary and the attmept should be retried, or if the error is
+ permanent and the attempt should be abandoned.
 */
 func SignedTokenRedeemHandler(
 	msg kafka.Message,
 	producer *kafka.Writer,
+	tolerableEquivalence []cbpServer.Equivalence,
 	server *cbpServer.Server,
 	results chan *ProcessingError,
 	logger *zerolog.Logger,
@@ -33,6 +36,7 @@ func SignedTokenRedeemHandler(
 		ERROR                = 3
 	)
 	data := msg.Value
+	// Deserialize request into usable struct
 	tokenRedeemRequestSet, err := avroSchema.DeserializeRedeemRequestSet(bytes.NewReader(data))
 	if err != nil {
 		return &ProcessingError{
@@ -42,12 +46,9 @@ func SignedTokenRedeemHandler(
 			KafkaMessage:   msg,
 		}
 	}
-	defer func() {
-		if recover() != nil {
-			err = errors.New(fmt.Sprintf("Request %s: Redeem attempt panicked", tokenRedeemRequestSet.Request_id))
-		}
-	}()
 	var redeemedTokenResults []avroSchema.RedeemResult
+	// For the time being, we are only accepting one message at a time in this data set.
+	// Therefore, we will error if more than a single message is present in the message.
 	if len(tokenRedeemRequestSet.Data) > 1 {
 		// NOTE: When we start supporting multiple requests we will need to review
 		// errors and return values as well.
@@ -69,6 +70,9 @@ func SignedTokenRedeemHandler(
 			KafkaMessage:   msg,
 		}
 	}
+
+	// Iterate over requests (only one at this point but the schema can support more
+	// in the future if needed)
 	for _, request := range tokenRedeemRequestSet.Data {
 		var (
 			verified             = false
@@ -86,6 +90,7 @@ func SignedTokenRedeemHandler(
 			continue
 		}
 
+		// preimage, signature, and binding are all required to proceed
 		if request.Token_preimage == "" || request.Signature == "" || request.Binding == "" {
 			logger.Error().Msg(fmt.Sprintf("Request %s: Empty request", tokenRedeemRequestSet.Request_id))
 			redeemedTokenResults = append(redeemedTokenResults, avroSchema.RedeemResult{
@@ -99,6 +104,7 @@ func SignedTokenRedeemHandler(
 
 		tokenPreimage := crypto.TokenPreimage{}
 		err = tokenPreimage.UnmarshalText([]byte(request.Token_preimage))
+		// Unmarshaling failure is a data issue and is probably permanent.
 		if err != nil {
 			message := fmt.Sprintf("Request %s: Could not unmarshal text into preimage", tokenRedeemRequestSet.Request_id)
 			return &ProcessingError{
@@ -110,6 +116,7 @@ func SignedTokenRedeemHandler(
 		}
 		verificationSignature := crypto.VerificationSignature{}
 		err = verificationSignature.UnmarshalText([]byte(request.Signature))
+		// Unmarshaling failure is a data issue and is probably permanent.
 		if err != nil {
 			message := fmt.Sprintf("Request %s: Could not unmarshal text into verification signature", tokenRedeemRequestSet.Request_id)
 			return &ProcessingError{
@@ -126,6 +133,7 @@ func SignedTokenRedeemHandler(
 			// Only attempt token verification with the issuer that was provided.
 			issuerPublicKey := issuer.SigningKey.PublicKey()
 			marshaledPublicKey, err := issuerPublicKey.MarshalText()
+			// Unmarshaling failure is a data issue and is probably permanent.
 			if err != nil {
 				message := fmt.Sprintf("Request %s: Could not unmarshal issuer public key into text", tokenRedeemRequestSet.Request_id)
 				return &ProcessingError{
@@ -165,7 +173,7 @@ func SignedTokenRedeemHandler(
 		} else {
 			logger.Trace().Msg(fmt.Sprintf("Request %s: Validated", tokenRedeemRequestSet.Request_id))
 		}
-		redemption, equivalence, err := server.CheckRedeemedTokenEquivalence(verifiedIssuer, &tokenPreimage, string(request.Binding))
+		redemption, equivalence, err := server.CheckRedeemedTokenEquivalence(verifiedIssuer, &tokenPreimage, string(request.Binding), msg.Offset)
 		if err != nil {
 			message := fmt.Sprintf("Request %s: Failed to check redemption equivalence", tokenRedeemRequestSet.Request_id)
 			return &ProcessingError{
@@ -175,7 +183,7 @@ func SignedTokenRedeemHandler(
 				KafkaMessage:   msg,
 			}
 		}
-		if equivalence != cbpServer.NoEquivalence {
+		if containsEquivalnce(tolerableEquivalence, equivalence) {
 			logger.Error().Msg(fmt.Sprintf("Request %s: Duplicate redemption: %e", tokenRedeemRequestSet.Request_id, err))
 			redeemedTokenResults = append(redeemedTokenResults, avroSchema.RedeemResult{
 				Issuer_name:     "",
@@ -183,6 +191,7 @@ func SignedTokenRedeemHandler(
 				Status:          DUPLICATE_REDEMPTION,
 				Associated_data: request.Associated_data,
 			})
+			continue
 		}
 		if err := server.PersistRedemption(*redemption); err != nil {
 			logger.Error().Err(err).Msg(fmt.Sprintf("Request %s: Token redemption failed: %e", tokenRedeemRequestSet.Request_id, err))
@@ -240,4 +249,14 @@ func SignedTokenRedeemHandler(
 		}
 	}
 	return nil
+}
+
+func containsEquivalnce(equivSlice []cbpServer.Equivalence, eqiv cbpServer.Equivalence) bool {
+	for _, e := range equivSlice {
+		if e == eqiv {
+			return true
+		}
+	}
+
+	return false
 }

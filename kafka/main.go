@@ -24,6 +24,7 @@ var brokers []string
 type Processor func(
 	kafka.Message,
 	*kafka.Writer,
+	[]server.Equivalence,
 	*server.Server,
 	chan *ProcessingError,
 	*zerolog.Logger,
@@ -46,10 +47,11 @@ func (e ProcessingError) Error() string {
 }
 
 type TopicMapping struct {
-	Topic          string
-	ResultProducer *kafka.Writer
-	Processor      Processor
-	Group          string
+	Topic                string
+	ResultProducer       *kafka.Writer
+	Processor            Processor
+	Group                string
+	TolerableEquivalence []server.Equivalence
 }
 
 func StartConsumers(providedServer *server.Server, logger *zerolog.Logger) error {
@@ -71,6 +73,10 @@ func StartConsumers(providedServer *server.Server, logger *zerolog.Logger) error
 			}),
 			Processor: SignedTokenRedeemHandler,
 			Group:     adsConsumerGroupV1,
+			// Either the record does not exist and there is NoEquivalence,
+			// or this is a retry of a previous record including a matching
+			// offset.
+			TolerableEquivalence: []server.Equivalence{server.NoEquivalence, server.IdAndAllValueEquivalence},
 		},
 		TopicMapping{
 			Topic: adsRequestSignV1Topic,
@@ -79,8 +85,9 @@ func StartConsumers(providedServer *server.Server, logger *zerolog.Logger) error
 				Topic:   adsResultSignV1Topic,
 				Dialer:  getDialer(logger),
 			}),
-			Processor: SignedBlindedTokenIssuerHandler,
-			Group:     adsConsumerGroupV1,
+			Processor:            SignedBlindedTokenIssuerHandler,
+			Group:                adsConsumerGroupV1,
+			TolerableEquivalence: []server.Equivalence{},
 		},
 	}
 	var topics []string
@@ -150,6 +157,7 @@ func StartConsumers(providedServer *server.Server, logger *zerolog.Logger) error
 						err := topicMapping.Processor(
 							msg,
 							topicMapping.ResultProducer,
+							topicMapping.TolerableEquivalence,
 							providedServer,
 							results,
 							logger,

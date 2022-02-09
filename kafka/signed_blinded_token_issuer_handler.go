@@ -22,6 +22,7 @@ import (
 func SignedBlindedTokenIssuerHandler(
 	msg kafka.Message,
 	producer *kafka.Writer,
+	tolerableEquivalence []cbpServer.Equivalence,
 	server *cbpServer.Server,
 	results chan *ProcessingError,
 	logger *zerolog.Logger,
