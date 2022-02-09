@@ -165,7 +165,26 @@ func SignedTokenRedeemHandler(
 		} else {
 			logger.Trace().Msg(fmt.Sprintf("Request %s: Validated", tokenRedeemRequestSet.Request_id))
 		}
-		if err := server.RedeemToken(verifiedIssuer, &tokenPreimage, string(request.Binding)); err != nil {
+		redemption, equivalence, err := server.CheckRedeemedTokenEquivalence(verifiedIssuer, &tokenPreimage, string(request.Binding))
+		if err != nil {
+			message := fmt.Sprintf("Request %s: Failed to check redemption equivalence", tokenRedeemRequestSet.Request_id)
+			return &ProcessingError{
+				Cause:          err,
+				FailureMessage: message,
+				Temporary:      false,
+				KafkaMessage:   msg,
+			}
+		}
+		if equivalence != cbpServer.NoEquivalence {
+			logger.Error().Msg(fmt.Sprintf("Request %s: Duplicate redemption: %e", tokenRedeemRequestSet.Request_id, err))
+			redeemedTokenResults = append(redeemedTokenResults, avroSchema.RedeemResult{
+				Issuer_name:     "",
+				Issuer_cohort:   0,
+				Status:          DUPLICATE_REDEMPTION,
+				Associated_data: request.Associated_data,
+			})
+		}
+		if err := server.PersistRedemption(*redemption); err != nil {
 			logger.Error().Err(err).Msg(fmt.Sprintf("Request %s: Token redemption failed: %e", tokenRedeemRequestSet.Request_id, err))
 			if strings.Contains(err.Error(), "Duplicate") {
 				logger.Error().Msg(fmt.Sprintf("Request %s: Duplicate redemption: %e", tokenRedeemRequestSet.Request_id, err))
