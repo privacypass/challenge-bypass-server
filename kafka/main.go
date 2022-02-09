@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -95,19 +94,8 @@ func StartConsumers(providedServer *server.Server, logger *zerolog.Logger) error
 		topics = append(topics, topicMapping.Topic)
 	}
 
-	consumerCount, err := strconv.Atoi(os.Getenv("KAFKA_CONSUMERS_PER_NODE"))
-	if err != nil {
-		logger.Error().Err(err).Msg("Failed to convert KAFKA_CONSUMERS_PER_NODE variable to a usable integer. Defaulting to 1.")
-		consumerCount = 1
-	}
-
-	logger.Trace().Msg(fmt.Sprintf("Spawning %d consumer goroutines", consumerCount))
-
 	reader := newConsumer(topics, adsConsumerGroupV1, logger)
-	if err != nil {
-		return err
-	}
-	logger.Trace().Msg("Beginning message processing")
+
 	// `kafka-go` exposes messages one at a time through its normal interfaces despite
 	// collecting messages with batching from Kafka. To process these messages in
 	// parallel we use the `FetchMessage` method in a loop to collect a set of messages
@@ -116,7 +104,6 @@ func StartConsumers(providedServer *server.Server, logger *zerolog.Logger) error
 	// cause the consumer to become stuck forever, so it's important that permanent
 	// failures are not categorized as temporary.
 	for {
-		logger.Trace().Msg(fmt.Sprintf("Fetching messages from Kafka"))
 		var (
 			wg      sync.WaitGroup
 			results = make(chan *ProcessingError)
@@ -126,6 +113,7 @@ func StartConsumers(providedServer *server.Server, logger *zerolog.Logger) error
 		ctx := context.Background()
 		batch, err := batchFromReader(ctx, reader, 20, logger)
 		if err != nil {
+			logger.Error().Err(err).Msg("Batching failed")
 			// This should be an app error that needs to communicate if its failure is
 			// temporary or permanent. If temporary we need to handle it and if
 			// permanent we need to commit and move on.
@@ -137,6 +125,7 @@ func StartConsumers(providedServer *server.Server, logger *zerolog.Logger) error
 				// Indicates batch has no more messages. End the loop for
 				// this batch and fetch another.
 				if err == io.EOF {
+					logger.Info().Msg("Batch complete. Ending loop.")
 					break BatchProcessingLoop
 				}
 			}
@@ -176,6 +165,7 @@ func StartConsumers(providedServer *server.Server, logger *zerolog.Logger) error
 				wg.Done()
 			}
 		}
+		close(results)
 		// Iterate over any failures and get the earliest temporary failure offset
 		var temporaryErrors []*ProcessingError
 		for processingError := range results {
@@ -189,6 +179,7 @@ func StartConsumers(providedServer *server.Server, logger *zerolog.Logger) error
 		// has the lowest offset. Only run sort if there is more than one temporary
 		// error.
 		if len(temporaryErrors) > 0 {
+			logger.Error().Msg(fmt.Sprintf("Temporary errors: %#v", temporaryErrors))
 			if len(temporaryErrors) > 1 {
 				sort.Slice(temporaryErrors, func(i, j int) bool {
 					return temporaryErrors[i].KafkaMessage.Offset < temporaryErrors[j].KafkaMessage.Offset
@@ -204,12 +195,13 @@ func StartConsumers(providedServer *server.Server, logger *zerolog.Logger) error
 					}
 				}
 			}
-		} else {
+		} else if len(batch) > 0 {
 			sort.Slice(batch, func(i, j int) bool {
 				return batch[i].Offset < batch[j].Offset
 			})
+			logger.Info().Msg(fmt.Sprintf("Committing offset", batch[0].Offset))
 			if err := reader.CommitMessages(ctx, batch[0]); err != nil {
-				logger.Error().Msg(fmt.Sprintf("Failed to commit: %s", err))
+				logger.Error().Err(err).Msg("Failed to commit")
 			}
 		}
 	}
@@ -226,10 +218,13 @@ func batchFromReader(ctx context.Context, reader *kafka.Reader, count int, logge
 		err      error
 	)
 	for i := 0; i < count; i++ {
-		message, err := reader.FetchMessage(ctx)
+		innerctx, _ := context.WithTimeout(ctx, 100*time.Millisecond)
+		message, err := reader.FetchMessage(innerctx)
 		if err != nil {
 			if err == io.EOF {
-				logger.Trace().Msg("Batch complete")
+				logger.Info().Msg("Batch complete")
+			} else if err.Error() != "context deadline exceeded" {
+				logger.Error().Err(err).Msg("Batch item error")
 			}
 			continue
 		}
@@ -244,19 +239,20 @@ func newConsumer(topics []string, groupId string, logger *zerolog.Logger) *kafka
 	logger.Info().Msg(fmt.Sprintf("Subscribing to kafka topic %s on behalf of group %s using brokers %s", topics, groupId, brokers))
 	kafkaLogger := logrus.New()
 	kafkaLogger.SetLevel(logrus.WarnLevel)
+	dialer := getDialer(logger)
 	reader := kafka.NewReader(kafka.ReaderConfig{
 		Brokers:        brokers,
-		Dialer:         getDialer(logger),
+		Dialer:         dialer,
 		GroupTopics:    topics,
 		GroupID:        groupId,
 		StartOffset:    kafka.FirstOffset,
 		Logger:         kafkaLogger,
-		MaxWait:        time.Second * 20, // default 10s
+		MaxWait:        time.Second * 20, // default 20s
 		CommitInterval: time.Second,      // flush commits to Kafka every second
 		MinBytes:       1e3,              // 1KB
 		MaxBytes:       10e6,             // 10MB
 	})
-	logger.Trace().Msg(fmt.Sprintf("Reader created with subscription"))
+	logger.Info().Msg(fmt.Sprintf("Reader created with subscription"))
 	return reader
 }
 
@@ -289,12 +285,18 @@ func Emit(producer *kafka.Writer, message []byte, logger *zerolog.Logger) error 
 
 func getDialer(logger *zerolog.Logger) *kafka.Dialer {
 	var dialer *kafka.Dialer
-	brokers = strings.Split(os.Getenv("KAFKA_BROKERS"), ",")
 	if os.Getenv("ENV") != "local" {
+		logger.Info().Msg("Generating TLSDialer")
 		tlsDialer, _, err := batgo_kafka.TLSDialer()
 		dialer = tlsDialer
 		if err != nil {
 			logger.Error().Msg(fmt.Sprintf("Failed to initialize TLS dialer: %e", err))
+		}
+	} else {
+		logger.Info().Msg("Generating Dialer")
+		dialer = &kafka.Dialer{
+			Timeout:   10 * time.Second,
+			DualStack: true,
 		}
 	}
 	return dialer

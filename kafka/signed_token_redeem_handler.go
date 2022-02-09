@@ -143,7 +143,6 @@ func SignedTokenRedeemHandler(
 					KafkaMessage:   msg,
 				}
 			}
-			logger.Trace().Msg(fmt.Sprintf("Request %s: Issuer: %s, Request: %s", tokenRedeemRequestSet.Request_id, string(marshaledPublicKey), request.Public_key))
 			if string(marshaledPublicKey) == request.Public_key {
 				if err := btd.VerifyTokenRedemption(
 					&tokenPreimage,
@@ -171,7 +170,7 @@ func SignedTokenRedeemHandler(
 			})
 			continue
 		} else {
-			logger.Trace().Msg(fmt.Sprintf("Request %s: Validated", tokenRedeemRequestSet.Request_id))
+			logger.Info().Msg(fmt.Sprintf("Request %s: Validated", tokenRedeemRequestSet.Request_id))
 		}
 		redemption, equivalence, err := server.CheckRedeemedTokenEquivalence(verifiedIssuer, &tokenPreimage, string(request.Binding), msg.Offset)
 		if err != nil {
@@ -183,7 +182,9 @@ func SignedTokenRedeemHandler(
 				KafkaMessage:   msg,
 			}
 		}
-		if containsEquivalnce(tolerableEquivalence, equivalence) {
+		// If the discovered equivalence is not one of the tolerableEquivalence
+		// options this redemption is considered a duplicate.
+		if !containsEquivalnce(tolerableEquivalence, equivalence) {
 			logger.Error().Msg(fmt.Sprintf("Request %s: Duplicate redemption: %e", tokenRedeemRequestSet.Request_id, err))
 			redeemedTokenResults = append(redeemedTokenResults, avroSchema.RedeemResult{
 				Issuer_name:     "",
@@ -213,7 +214,7 @@ func SignedTokenRedeemHandler(
 			})
 			continue
 		}
-		logger.Trace().Msg(fmt.Sprintf("Request %s: Redeemed", tokenRedeemRequestSet.Request_id))
+		logger.Info().Msg(fmt.Sprintf("Request %s: Redeemed", tokenRedeemRequestSet.Request_id))
 		issuerName := verifiedIssuer.IssuerType
 		redeemedTokenResults = append(redeemedTokenResults, avroSchema.RedeemResult{
 			Issuer_name:     issuerName,
