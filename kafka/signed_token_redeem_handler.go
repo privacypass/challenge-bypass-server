@@ -2,7 +2,6 @@ package kafka
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"time"
 
@@ -40,12 +39,8 @@ func SignedTokenRedeemHandler(
 	// Deserialize request into usable struct
 	tokenRedeemRequestSet, err := avroSchema.DeserializeRedeemRequestSet(bytes.NewReader(data))
 	if err != nil {
-		return &utils.ProcessingError{
-			Cause:          err,
-			FailureMessage: fmt.Sprintf("Request %s: Failed Avro deserialization", tokenRedeemRequestSet.Request_id),
-			Temporary:      utils.ErrorIsTemporary(err, logger),
-			KafkaMessage:   msg,
-		}
+		message := fmt.Sprintf("Request %s: Failed Avro deserialization", tokenRedeemRequestSet.Request_id)
+		return utils.ProcessingErrorFromErrorWithMessage(err, message, msg, logger)
 	}
 	var redeemedTokenResults []avroSchema.RedeemResult
 	// For the time being, we are only accepting one message at a time in this data set.
@@ -54,22 +49,12 @@ func SignedTokenRedeemHandler(
 		// NOTE: When we start supporting multiple requests we will need to review
 		// errors and return values as well.
 		message := fmt.Sprintf("Request %s: Data array unexpectedly contained more than a single message. This array is intended to make future extension easier, but no more than a single value is currently expected.", tokenRedeemRequestSet.Request_id)
-		return &utils.ProcessingError{
-			Cause:          errors.New(message),
-			FailureMessage: message,
-			Temporary:      utils.ErrorIsTemporary(err, logger),
-			KafkaMessage:   msg,
-		}
+		return utils.ProcessingErrorFromErrorWithMessage(err, message, msg, logger)
 	}
 	issuers, err := server.FetchAllIssuers()
 	if err != nil {
 		message := fmt.Sprintf("Request %s: Failed to fetch all issuers", tokenRedeemRequestSet.Request_id)
-		return &utils.ProcessingError{
-			Cause:          errors.New(message),
-			FailureMessage: message,
-			Temporary:      utils.ErrorIsTemporary(err, logger),
-			KafkaMessage:   msg,
-		}
+		return utils.ProcessingErrorFromErrorWithMessage(err, message, msg, logger)
 	}
 
 	// Iterate over requests (only one at this point but the schema can support more
@@ -108,24 +93,14 @@ func SignedTokenRedeemHandler(
 		// Unmarshaling failure is a data issue and is probably permanent.
 		if err != nil {
 			message := fmt.Sprintf("Request %s: Could not unmarshal text into preimage", tokenRedeemRequestSet.Request_id)
-			return &utils.ProcessingError{
-				Cause:          err,
-				FailureMessage: message,
-				Temporary:      utils.ErrorIsTemporary(err, logger),
-				KafkaMessage:   msg,
-			}
+			return utils.ProcessingErrorFromErrorWithMessage(err, message, msg, logger)
 		}
 		verificationSignature := crypto.VerificationSignature{}
 		err = verificationSignature.UnmarshalText([]byte(request.Signature))
 		// Unmarshaling failure is a data issue and is probably permanent.
 		if err != nil {
 			message := fmt.Sprintf("Request %s: Could not unmarshal text into verification signature", tokenRedeemRequestSet.Request_id)
-			return &utils.ProcessingError{
-				Cause:          err,
-				FailureMessage: message,
-				Temporary:      utils.ErrorIsTemporary(err, logger),
-				KafkaMessage:   msg,
-			}
+			return utils.ProcessingErrorFromErrorWithMessage(err, message, msg, logger)
 		}
 		for _, issuer := range *issuers {
 			if !issuer.ExpiresAt.IsZero() && issuer.ExpiresAt.Before(time.Now()) {
@@ -137,12 +112,7 @@ func SignedTokenRedeemHandler(
 			// Unmarshaling failure is a data issue and is probably permanent.
 			if err != nil {
 				message := fmt.Sprintf("Request %s: Could not unmarshal issuer public key into text", tokenRedeemRequestSet.Request_id)
-				return &utils.ProcessingError{
-					Cause:          err,
-					FailureMessage: message,
-					Temporary:      utils.ErrorIsTemporary(err, logger),
-					KafkaMessage:   msg,
-				}
+				return utils.ProcessingErrorFromErrorWithMessage(err, message, msg, logger)
 			}
 			if string(marshaledPublicKey) == request.Public_key {
 				if err := btd.VerifyTokenRedemption(
@@ -176,12 +146,7 @@ func SignedTokenRedeemHandler(
 		redemption, equivalence, err := server.CheckRedeemedTokenEquivalence(verifiedIssuer, &tokenPreimage, string(request.Binding), msg.Offset)
 		if err != nil {
 			message := fmt.Sprintf("Request %s: Failed to check redemption equivalence", tokenRedeemRequestSet.Request_id)
-			return &utils.ProcessingError{
-				Cause:          err,
-				FailureMessage: message,
-				Temporary:      utils.ErrorIsTemporary(err, logger),
-				KafkaMessage:   msg,
-			}
+			return utils.ProcessingErrorFromErrorWithMessage(err, message, msg, logger)
 		}
 		// If the discovered equivalence is not one of the tolerableEquivalence
 		// options this redemption is considered a duplicate.
@@ -222,23 +187,13 @@ func SignedTokenRedeemHandler(
 	err = resultSet.Serialize(&resultSetBuffer)
 	if err != nil {
 		message := fmt.Sprintf("Request %s: Failed to serialize ResultSet", tokenRedeemRequestSet.Request_id)
-		return &utils.ProcessingError{
-			Cause:          err,
-			FailureMessage: message,
-			Temporary:      utils.ErrorIsTemporary(err, logger),
-			KafkaMessage:   msg,
-		}
+		return utils.ProcessingErrorFromErrorWithMessage(err, message, msg, logger)
 	}
 
 	err = Emit(producer, resultSetBuffer.Bytes(), logger)
 	if err != nil {
 		message := fmt.Sprintf("Request %s: Failed to emit results to topic %s", tokenRedeemRequestSet.Request_id, producer.Topic)
-		return &utils.ProcessingError{
-			Cause:          err,
-			FailureMessage: message,
-			Temporary:      utils.ErrorIsTemporary(err, logger),
-			KafkaMessage:   msg,
-		}
+		return utils.ProcessingErrorFromErrorWithMessage(err, message, msg, logger)
 	}
 	return nil
 }

@@ -2,7 +2,6 @@ package kafka
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 
 	crypto "github.com/brave-intl/challenge-bypass-ristretto-ffi"
@@ -40,12 +39,7 @@ func SignedBlindedTokenIssuerHandler(
 			"Request %s: Failed Avro deserialization",
 			blindedTokenRequestSet.Request_id,
 		)
-		return &utils.ProcessingError{
-			Cause:          err,
-			FailureMessage: message,
-			Temporary:      utils.ErrorIsTemporary(err, logger),
-			KafkaMessage:   msg,
-		}
+		return utils.ProcessingErrorFromErrorWithMessage(err, message, msg, logger)
 	}
 	var blindedTokenResults []avroSchema.SigningResult
 	if len(blindedTokenRequestSet.Data) > 1 {
@@ -55,12 +49,7 @@ func SignedBlindedTokenIssuerHandler(
 			"Request %s: Data array unexpectedly contained more than a single message. This array is intended to make future extension easier, but no more than a single value is currently expected.",
 			blindedTokenRequestSet.Request_id,
 		)
-		return &utils.ProcessingError{
-			Cause:          errors.New(message),
-			FailureMessage: message,
-			Temporary:      utils.ErrorIsTemporary(err, logger),
-			KafkaMessage:   msg,
-		}
+		return utils.ProcessingErrorFromErrorWithMessage(err, message, msg, logger)
 	}
 	for _, request := range blindedTokenRequestSet.Data {
 		if request.Blinded_tokens == nil {
@@ -133,12 +122,7 @@ func SignedBlindedTokenIssuerHandler(
 				"Request %s: Could not marshal DLEQ proof",
 				blindedTokenRequestSet.Request_id,
 			)
-			return &utils.ProcessingError{
-				Cause:          err,
-				FailureMessage: message,
-				Temporary:      utils.ErrorIsTemporary(err, logger),
-				KafkaMessage:   msg,
-			}
+			return utils.ProcessingErrorFromErrorWithMessage(err, message, msg, logger)
 		}
 		var marshaledTokens []string
 		for _, token := range signedTokens {
@@ -148,12 +132,7 @@ func SignedBlindedTokenIssuerHandler(
 					"Request %s: Could not marshal new tokens to bytes: %e",
 					blindedTokenRequestSet.Request_id,
 				)
-				return &utils.ProcessingError{
-					Cause:          err,
-					FailureMessage: message,
-					Temporary:      utils.ErrorIsTemporary(err, logger),
-					KafkaMessage:   msg,
-				}
+				return utils.ProcessingErrorFromErrorWithMessage(err, message, msg, logger)
 			}
 			marshaledTokens = append(marshaledTokens, string(marshaledToken[:]))
 		}
@@ -164,12 +143,7 @@ func SignedBlindedTokenIssuerHandler(
 				"Request %s: Could not marshal signing key: %e",
 				blindedTokenRequestSet.Request_id,
 			)
-			return &utils.ProcessingError{
-				Cause:          err,
-				FailureMessage: message,
-				Temporary:      utils.ErrorIsTemporary(err, logger),
-				KafkaMessage:   msg,
-			}
+			return utils.ProcessingErrorFromErrorWithMessage(err, message, msg, logger)
 		}
 		blindedTokenResults = append(blindedTokenResults, avroSchema.SigningResult{
 			Signed_tokens:     marshaledTokens,
@@ -191,12 +165,7 @@ func SignedBlindedTokenIssuerHandler(
 			blindedTokenRequestSet.Request_id,
 			resultSet,
 		)
-		return &utils.ProcessingError{
-			Cause:          err,
-			FailureMessage: message,
-			Temporary:      utils.ErrorIsTemporary(err, logger),
-			KafkaMessage:   msg,
-		}
+		return utils.ProcessingErrorFromErrorWithMessage(err, message, msg, logger)
 	}
 	err = Emit(producer, resultSetBuffer.Bytes(), logger)
 	if err != nil {
@@ -205,12 +174,7 @@ func SignedBlindedTokenIssuerHandler(
 			blindedTokenRequestSet.Request_id,
 			producer.Topic,
 		)
-		return &utils.ProcessingError{
-			Cause:          err,
-			FailureMessage: message,
-			Temporary:      utils.ErrorIsTemporary(err, logger),
-			KafkaMessage:   msg,
-		}
+		return utils.ProcessingErrorFromErrorWithMessage(err, message, msg, logger)
 	}
 	return nil
 }
