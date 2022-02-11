@@ -42,15 +42,7 @@ func (c *Server) InitDynamo() {
 	c.dynamo = svc
 }
 
-func (c *Server) fetchRedemptionV2(issuer *Issuer, ID string) (*RedemptionV2, error) {
-	issuerUUID, err := uuid.FromString(issuer.ID)
-	if err != nil {
-		c.Logger.Error("Bad issuer id")
-		return nil, errors.New("Bad issuer id")
-	}
-
-	id := uuid.NewV5(issuerUUID, ID)
-
+func (c *Server) fetchRedemptionV2(id uuid.UUID) (*RedemptionV2, error) {
 	tableName := "redemptions"
 	if os.Getenv("dynamodb_table") != "" {
 		tableName = os.Getenv("dynamodb_table")
@@ -186,7 +178,7 @@ func (c *Server) CheckRedeemedTokenEquivalence(issuer *Issuer, preimage *crypto.
 		Offset:    offset,
 	}
 
-	existingRedemption, err := c.fetchRedemptionV2(issuer, id.String())
+	existingRedemption, err := c.fetchRedemptionV2(id)
 
 	// If err is nil that means that the record does exist in the database and we need
 	// to determine whether the body is equivalent to what was provided or just the
