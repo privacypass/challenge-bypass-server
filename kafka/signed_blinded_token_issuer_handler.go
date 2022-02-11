@@ -43,7 +43,7 @@ func SignedBlindedTokenIssuerHandler(
 		return &utils.ProcessingError{
 			Cause:          err,
 			FailureMessage: message,
-			Temporary:      utils.ErrorIsTemporary(err),
+			Temporary:      utils.ErrorIsTemporary(err, logger),
 			KafkaMessage:   msg,
 		}
 	}
@@ -58,7 +58,7 @@ func SignedBlindedTokenIssuerHandler(
 		return &utils.ProcessingError{
 			Cause:          errors.New(message),
 			FailureMessage: message,
-			Temporary:      utils.ErrorIsTemporary(err),
+			Temporary:      utils.ErrorIsTemporary(err, logger),
 			KafkaMessage:   msg,
 		}
 	}
@@ -136,7 +136,7 @@ func SignedBlindedTokenIssuerHandler(
 			return &utils.ProcessingError{
 				Cause:          err,
 				FailureMessage: message,
-				Temporary:      utils.ErrorIsTemporary(err),
+				Temporary:      utils.ErrorIsTemporary(err, logger),
 				KafkaMessage:   msg,
 			}
 		}
@@ -151,7 +151,7 @@ func SignedBlindedTokenIssuerHandler(
 				return &utils.ProcessingError{
 					Cause:          err,
 					FailureMessage: message,
-					Temporary:      utils.ErrorIsTemporary(err),
+					Temporary:      utils.ErrorIsTemporary(err, logger),
 					KafkaMessage:   msg,
 				}
 			}
@@ -167,7 +167,7 @@ func SignedBlindedTokenIssuerHandler(
 			return &utils.ProcessingError{
 				Cause:          err,
 				FailureMessage: message,
-				Temporary:      utils.ErrorIsTemporary(err),
+				Temporary:      utils.ErrorIsTemporary(err, logger),
 				KafkaMessage:   msg,
 			}
 		}
@@ -194,7 +194,7 @@ func SignedBlindedTokenIssuerHandler(
 		return &utils.ProcessingError{
 			Cause:          err,
 			FailureMessage: message,
-			Temporary:      utils.ErrorIsTemporary(err),
+			Temporary:      utils.ErrorIsTemporary(err, logger),
 			KafkaMessage:   msg,
 		}
 	}
@@ -208,7 +208,7 @@ func SignedBlindedTokenIssuerHandler(
 		return &utils.ProcessingError{
 			Cause:          err,
 			FailureMessage: message,
-			Temporary:      utils.ErrorIsTemporary(err),
+			Temporary:      utils.ErrorIsTemporary(err, logger),
 			KafkaMessage:   msg,
 		}
 	}

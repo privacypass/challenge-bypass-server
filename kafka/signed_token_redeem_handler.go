@@ -44,7 +44,7 @@ func SignedTokenRedeemHandler(
 		return &utils.ProcessingError{
 			Cause:          err,
 			FailureMessage: fmt.Sprintf("Request %s: Failed Avro deserialization", tokenRedeemRequestSet.Request_id),
-			Temporary:      utils.ErrorIsTemporary(err),
+			Temporary:      utils.ErrorIsTemporary(err, logger),
 			KafkaMessage:   msg,
 		}
 	}
@@ -58,7 +58,7 @@ func SignedTokenRedeemHandler(
 		return &utils.ProcessingError{
 			Cause:          errors.New(message),
 			FailureMessage: message,
-			Temporary:      utils.ErrorIsTemporary(err),
+			Temporary:      utils.ErrorIsTemporary(err, logger),
 			KafkaMessage:   msg,
 		}
 	}
@@ -68,7 +68,7 @@ func SignedTokenRedeemHandler(
 		return &utils.ProcessingError{
 			Cause:          errors.New(message),
 			FailureMessage: message,
-			Temporary:      utils.ErrorIsTemporary(err),
+			Temporary:      utils.ErrorIsTemporary(err, logger),
 			KafkaMessage:   msg,
 		}
 	}
@@ -112,7 +112,7 @@ func SignedTokenRedeemHandler(
 			return &utils.ProcessingError{
 				Cause:          err,
 				FailureMessage: message,
-				Temporary:      utils.ErrorIsTemporary(err),
+				Temporary:      utils.ErrorIsTemporary(err, logger),
 				KafkaMessage:   msg,
 			}
 		}
@@ -124,7 +124,7 @@ func SignedTokenRedeemHandler(
 			return &utils.ProcessingError{
 				Cause:          err,
 				FailureMessage: message,
-				Temporary:      utils.ErrorIsTemporary(err),
+				Temporary:      utils.ErrorIsTemporary(err, logger),
 				KafkaMessage:   msg,
 			}
 		}
@@ -141,7 +141,7 @@ func SignedTokenRedeemHandler(
 				return &utils.ProcessingError{
 					Cause:          err,
 					FailureMessage: message,
-					Temporary:      utils.ErrorIsTemporary(err),
+					Temporary:      utils.ErrorIsTemporary(err, logger),
 					KafkaMessage:   msg,
 				}
 			}
@@ -180,7 +180,7 @@ func SignedTokenRedeemHandler(
 			return &utils.ProcessingError{
 				Cause:          err,
 				FailureMessage: message,
-				Temporary:      utils.ErrorIsTemporary(err),
+				Temporary:      utils.ErrorIsTemporary(err, logger),
 				KafkaMessage:   msg,
 			}
 		}
@@ -236,7 +236,7 @@ func SignedTokenRedeemHandler(
 		return &utils.ProcessingError{
 			Cause:          err,
 			FailureMessage: message,
-			Temporary:      utils.ErrorIsTemporary(err),
+			Temporary:      utils.ErrorIsTemporary(err, logger),
 			KafkaMessage:   msg,
 		}
 	}
@@ -247,7 +247,7 @@ func SignedTokenRedeemHandler(
 		return &utils.ProcessingError{
 			Cause:          err,
 			FailureMessage: message,
-			Temporary:      utils.ErrorIsTemporary(err),
+			Temporary:      utils.ErrorIsTemporary(err, logger),
 			KafkaMessage:   msg,
 		}
 	}
