@@ -175,10 +175,10 @@ func StartConsumers(providedServer *server.Server, logger *zerolog.Logger) error
 			// failure is picked up as the first item in the next batch.
 			for _, message := range batch {
 				if message.Offset == temporaryErrors[0].KafkaMessage.Offset-1 {
-					time.Sleep(temporaryErrors[0].Backoff)
 					if err := reader.CommitMessages(ctx, message); err != nil {
 						logger.Error().Msg(fmt.Sprintf("Failed to commit: %s", err))
 					}
+					time.Sleep(temporaryErrors[0].Backoff)
 				}
 			}
 		} else if len(batch) > 0 {

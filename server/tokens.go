@@ -323,6 +323,7 @@ func (c *Server) blindedTokenRedemptionHandler(w http.ResponseWriter, r *http.Re
 			redemption, err := c.fetchRedemptionV2(uuid.NewV5(issuerUUID, tokenID))
 			if err != nil {
 				if err == errRedemptionNotFound {
+					c.Logger.Error("Redemption not found")
 					return &handlers.AppError{
 						Message: err.Error(),
 						Code:    http.StatusBadRequest,

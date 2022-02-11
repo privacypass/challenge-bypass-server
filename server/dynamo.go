@@ -71,7 +71,6 @@ func (c *Server) fetchRedemptionV2(id uuid.UUID) (*RedemptionV2, error) {
 	}
 
 	if redemption.IssuerID == "" || redemption.ID == "" {
-		c.Logger.Error("Redemption not found")
 		return nil, errRedemptionNotFound
 	}
 	return &redemption, nil
