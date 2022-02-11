@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	crypto "github.com/brave-intl/challenge-bypass-ristretto-ffi"
@@ -197,17 +196,7 @@ func SignedTokenRedeemHandler(
 			continue
 		}
 		if err := server.PersistRedemption(*redemption); err != nil {
-			logger.Error().Err(err).Msg(fmt.Sprintf("Request %s: Token redemption failed: %e", tokenRedeemRequestSet.Request_id, err))
-			if strings.Contains(err.Error(), "Duplicate") {
-				logger.Error().Msg(fmt.Sprintf("Request %s: Duplicate redemption: %e", tokenRedeemRequestSet.Request_id, err))
-				redeemedTokenResults = append(redeemedTokenResults, avroSchema.RedeemResult{
-					Issuer_name:     "",
-					Issuer_cohort:   0,
-					Status:          DUPLICATE_REDEMPTION,
-					Associated_data: request.Associated_data,
-				})
-			}
-			logger.Error().Msg(fmt.Sprintf("Request %s: Could not mark token redemption", tokenRedeemRequestSet.Request_id))
+			logger.Error().Err(err).Msg(fmt.Sprintf("Request %s: Token redemption failed", tokenRedeemRequestSet.Request_id))
 			redeemedTokenResults = append(redeemedTokenResults, avroSchema.RedeemResult{
 				Issuer_name:     "",
 				Issuer_cohort:   0,

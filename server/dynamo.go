@@ -150,8 +150,8 @@ func (c *Server) PersistRedemption(redemption RedemptionV2) error {
 	_, err = c.dynamo.PutItem(input)
 	if err != nil {
 		if err, ok := err.(awserr.Error); ok && err.Code() == "ConditionalCheckFailedException" { // unique constraint violation
-			c.Logger.Error("Duplicate redemption")
-			return errDuplicateRedemption
+			c.Logger.Error("Dynamo constraint violation")
+			return err
 		}
 		c.Logger.Error("Error creating item")
 		return err

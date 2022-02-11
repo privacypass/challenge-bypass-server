@@ -3,8 +3,8 @@ package utils
 import (
 	"fmt"
 	awsDynamoTypes "github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
-	"github.com/segmentio/kafka-go"
 	"github.com/rs/zerolog"
+	"github.com/segmentio/kafka-go"
 )
 
 type ProcessingError struct {
