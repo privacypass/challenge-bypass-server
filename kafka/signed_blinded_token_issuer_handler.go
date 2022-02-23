@@ -57,17 +57,6 @@ func SignedBlindedTokenIssuerHandler(
 			continue
 		}
 
-		if request.Issuer_cohort != 0 && request.Issuer_cohort != 1 {
-			logger.Error().Msg(
-				fmt.Sprintf(
-					"Request %s: Provided cohort is not supported: %d",
-					blindedTokenRequestSet.Request_id,
-					request.Issuer_cohort,
-				),
-			)
-			continue
-		}
-
 		issuer, appErr := server.GetLatestIssuer(request.Issuer_type, int(request.Issuer_cohort))
 		if appErr != nil {
 			blindedTokenResults = append(blindedTokenResults, avroSchema.SigningResult{
