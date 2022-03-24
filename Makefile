@@ -24,4 +24,4 @@ docker-release:
 	docker push brave/challenge-bypass:latest
 
 generate-avro:
-	gogen-avro --package=generated ./avro/generated ./avro/schemas/*
+	gogen-avro --containers=true --package=generated ./avro/generated ./avro/schemas/*
