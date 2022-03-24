@@ -1,7 +1,7 @@
 module github.com/brave-intl/challenge-bypass-server
 
 require (
-	github.com/actgardner/gogen-avro/v9 v9.0.0
+	github.com/actgardner/gogen-avro/v10 v10.2.0 // indirect
 	github.com/aws/aws-sdk-go v1.27.0
 	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.13.0 // indirect
 	github.com/brave-intl/bat-go v0.4.0
