@@ -14,10 +14,10 @@ import (
 )
 
 /*
- BlindedTokenIssuerHandler emits signed, blinded tokens based on provided blinded tokens.
- @TODO: It would be better for the Server implementation and the Kafka implementation of
- this behavior to share utility functions rather than passing an instance of the server
- as an argument here. That will require a bit of refactoring.
+SignedBlindedTokenIssuerHandler emits signed, blinded tokens based on provided blinded tokens.
+@TODO: It would be better for the Server implementation and the Kafka implementation of
+this behavior to share utility functions rather than passing an instance of the server
+as an argument here. That will require a bit of refactoring.
 */
 func SignedBlindedTokenIssuerHandler(
 	msg kafka.Message,
@@ -120,6 +120,7 @@ func SignedBlindedTokenIssuerHandler(
 				message := fmt.Sprintf(
 					"Request %s: Could not marshal new tokens to bytes: %e",
 					blindedTokenRequestSet.Request_id,
+					err,
 				)
 				return utils.ProcessingErrorFromErrorWithMessage(err, message, msg, logger)
 			}
@@ -131,6 +132,7 @@ func SignedBlindedTokenIssuerHandler(
 			message := fmt.Sprintf(
 				"Request %s: Could not marshal signing key: %e",
 				blindedTokenRequestSet.Request_id,
+				err,
 			)
 			return utils.ProcessingErrorFromErrorWithMessage(err, message, msg, logger)
 		}

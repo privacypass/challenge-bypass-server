@@ -23,7 +23,7 @@ var _ = fmt.Printf
 type SigningResult struct {
 	Signed_tokens []string `json:"signed_tokens"`
 
-	Public_key string `json:"public_key"`
+	Issuer_public_key string `json:"issuer_public_key"`
 
 	Proof string `json:"proof"`
 
@@ -70,7 +70,7 @@ func writeSigningResult(r SigningResult, w io.Writer) error {
 	if err != nil {
 		return err
 	}
-	err = vm.WriteString(r.Public_key, w)
+	err = vm.WriteString(r.Issuer_public_key, w)
 	if err != nil {
 		return err
 	}
@@ -120,7 +120,7 @@ func (r *SigningResult) Get(i int) types.Field {
 		return w
 
 	case 1:
-		w := types.String{Target: &r.Public_key}
+		w := types.String{Target: &r.Issuer_public_key}
 
 		return w
 
@@ -171,7 +171,7 @@ func (r SigningResult) MarshalJSON() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	output["public_key"], err = json.Marshal(r.Public_key)
+	output["public_key"], err = json.Marshal(r.Issuer_public_key)
 	if err != nil {
 		return nil, err
 	}
@@ -219,7 +219,7 @@ func (r *SigningResult) UnmarshalJSON(data []byte) error {
 	}()
 
 	if val != nil {
-		if err := json.Unmarshal([]byte(val), &r.Public_key); err != nil {
+		if err := json.Unmarshal([]byte(val), &r.Issuer_public_key); err != nil {
 			return err
 		}
 	} else {
