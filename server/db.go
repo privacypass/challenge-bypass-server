@@ -487,14 +487,20 @@ func redeemTokenWithDB(db Queryable, stringIssuer string, preimage *crypto.Token
 	queryTimer := prometheus.NewTimer(createRedemptionDBDuration)
 	rows, err := db.Query(
 		`INSERT INTO redemptions(id, issuer_type, ts, payload) VALUES ($1, $2, NOW(), $3)`, preimageTxt, stringIssuer, payload)
+	defer func() {
+		if rows != nil {
+			err := rows.Close()
+			if err != nil {
+				return err
+			}
+		}
+	}()
 	if err != nil {
-		defer rows.Close()
 		if err, ok := err.(*pq.Error); ok && err.Code == "23505" { // unique constraint violation
 			return errDuplicateRedemption
 		}
 		return err
 	}
-	defer rows.Close()
 
 	queryTimer.ObserveDuration()
 	return nil
