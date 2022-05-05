@@ -1,17 +1,20 @@
 package server
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
 	"strconv"
 	"time"
 
+	timeutils "github.com/brave-intl/bat-go/utils/time"
 	crypto "github.com/brave-intl/challenge-bypass-ristretto-ffi"
 	"github.com/brave-intl/challenge-bypass-server/utils/metrics"
 	migrate "github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file" // Why?
+	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 	"github.com/lib/pq"
 	cache "github.com/patrickmn/go-cache"
@@ -44,6 +47,32 @@ type issuer struct {
 	ExpiresAt    pq.NullTime `db:"expires_at"`
 	RotatedAt    pq.NullTime `db:"rotated_at"`
 	Version      int         `db:"version"`
+}
+
+// TimeAwareIssuer - an issuer that uses time based keys
+type TimeAwareIssuer struct {
+	ID            *uuid.UUID      `json:"id" db:"id"`
+	IssuerType    string          `json:"issuer_type" db:"issuer_type"`
+	IssuerCohort  int             `json:"issuer_cohort" db:"issuer_cohort"`
+	MaxTokens     int             `json:"max_tokens" db:"max_tokens"`
+	CreatedAt     *time.Time      `json:"created_at" db:"created_at"`
+	ExpiresAt     *time.Time      `json:"expires_at" db:"expires_at"`
+	LastRotatedAt *time.Time      `json:"last_rotated_at" db:"last_rotated_at"`
+	ValidFrom     *time.Time      `json:"valid_from" db:"valid_from"`
+	Version       int             `json:"version" db:"version"`
+	Buffer        int             `json:"buffer" db:"buffer"`
+	Duration      string          `json:"duration" db:"duration"`
+	Keys          []TimeAwareKeys `json:"keys"`
+}
+
+// TimeAwareKeys - an issuer that uses time based keys
+type TimeAwareKeys struct {
+	SigningKey []byte     `json:"-" db:"signing_key"`
+	Cohort     int        `json:"cohort" db:"cohort"`
+	IssuerID   *uuid.UUID `json:"issuer_id" db:"issuer_id"`
+	CreatedAt  *time.Time `json:"created_at" db:"created_at"`
+	StartAt    *time.Time `json:"start_at" db:"start_at"`
+	EndAt      *time.Time `json:"end_at" db:"end_at"`
 }
 
 // Issuer of tokens
@@ -129,7 +158,7 @@ func (c *Server) InitDb() {
 	if err != nil {
 		panic(err)
 	}
-	err = m.Migrate(5)
+	err = m.Migrate(6)
 	if err != migrate.ErrNoChange && err != nil {
 		panic(err)
 	}
@@ -157,6 +186,11 @@ var (
 		Help: "Number of create issuer attempts",
 	})
 
+	createTimeAwareIssuerCounter = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "create_time_aware_issuer_count",
+		Help: "Number of create time aware issuer attempts",
+	})
+
 	redeemTokenCounter = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "redeem_token_count",
 		Help: "Number of calls to redeem token",
@@ -178,6 +212,12 @@ var (
 
 	createIssuerDBDuration = prometheus.NewHistogram(prometheus.HistogramOpts{
 		Name:    "db_create_issuer_duration",
+		Help:    "create issuer sql call duration",
+		Buckets: latencyBuckets,
+	})
+
+	createTimeLimitedIssuerDBDuration = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Name:    "db_create_time_limited_issuer_duration",
 		Help:    "create issuer sql call duration",
 		Buckets: latencyBuckets,
 	})
@@ -417,6 +457,140 @@ func (c *Server) rotateIssuers() error {
 	}
 
 	return nil
+}
+
+// createTimeAwareIssuer - creation of a time aware issuer
+func (c *Server) createTimeAwareIssuer(issuer TimeAwareIssuer) error {
+	defer incrementCounter(createTimeAwareIssuerCounter)
+	if issuer.MaxTokens == 0 {
+		issuer.MaxTokens = 40
+	}
+
+	duration, err := timeutils.ParseDuration(issuer.Duration)
+	if err != nil {
+		return fmt.Errorf("failed to parse issuer duration: %w", err)
+	}
+
+	tx, err := c.db.BeginTx(context.Background(), nil)
+	if err != nil {
+		return fmt.Errorf("failed to aquire db tx: %w", err)
+	}
+
+	queryTimer := prometheus.NewTimer(createTimeLimitedIssuerDBDuration)
+	rows, err := tx.Query(
+		`
+		INSERT INTO time_aware_issuers
+			(
+				issuer_type,
+				issuer_cohort,
+				max_tokens,
+				version,
+				expires_at,
+				buffer,
+				duration)
+		VALUES
+		($1, $2, $3, 3, $4, $5, $6)
+		RETURNING id`,
+		issuer.IssuerType,
+		issuer.IssuerCohort,
+		issuer.MaxTokens,
+		issuer.ExpiresAt,
+		issuer.Buffer,
+		issuer.Duration,
+	)
+	if err != nil {
+		c.Logger.Error("Could not insert the new issuer into the DB")
+		queryTimer.ObserveDuration()
+		tx.Rollback()
+		return err
+	}
+
+	// get the newly inserted issuer identifier
+	var issuerID uuid.UUID
+	for rows.Next() {
+		if err := rows.Scan(&issuerID); err != nil {
+			tx.Rollback()
+			return fmt.Errorf("failed to get time aware issuer id: %w", err)
+		}
+	}
+	if err := rows.Close(); err != nil {
+		tx.Rollback()
+		return fmt.Errorf("failed to close rows on time aware issuer creation: %w", err)
+	}
+
+	// time to create the keys associated with the issuer
+	issuer.Keys = []TimeAwareKeys{}
+	start := issuer.ValidFrom
+
+	valueFmtStr := ""
+
+	// for i in buffer, create signing keys for each
+	for i := 0; i < issuer.Buffer; i++ {
+		// start/end, increment every iteration
+		end, err := duration.From(*start)
+		if err != nil {
+			tx.Rollback()
+			return fmt.Errorf("unable to calculate end time: %w", err)
+		}
+
+		signingKey, err := crypto.RandomSigningKey()
+		if err != nil {
+			c.Logger.Error("Error generating key")
+			tx.Rollback()
+			return err
+		}
+
+		signingKeyTxt, err := signingKey.MarshalText()
+		if err != nil {
+			c.Logger.Error("Error marshalling signing key")
+			tx.Rollback()
+			return err
+		}
+
+		issuer.Keys = append(issuer.Keys, TimeAwareKeys{
+			SigningKey: signingKeyTxt,
+			Cohort:     issuer.IssuerCohort,
+			IssuerID:   &issuerID,
+			StartAt:    start,
+			EndAt:      end,
+		})
+
+		if !(*start).Equal(*issuer.ValidFrom) {
+			valueFmtStr += ", "
+		}
+		valueFmtStr += "($1, $2, $3, $4, $5)"
+
+		// increment start
+		*start = *end
+	}
+
+	var values []interface{}
+	// create our value params for insertion
+	for _, v := range issuer.Keys {
+		values = append(values,
+			v.IssuerID, v.SigningKey, v.Cohort, v.StartAt, v.EndAt)
+	}
+
+	rows, err = tx.Query(
+		fmt.Sprintf(`
+		INSERT INTO time_aware_keys
+			(
+				time_aware_issuer_id,
+				signing_key,
+				cohort,
+				start_at,
+				end_at
+			)
+		VALUES %s`, valueFmtStr), values...)
+	if err != nil {
+		c.Logger.Error("Could not insert the new issuer keys into the DB")
+		queryTimer.ObserveDuration()
+		tx.Rollback()
+		return err
+	}
+	defer rows.Close()
+	queryTimer.ObserveDuration()
+	return tx.Commit()
 }
 
 func (c *Server) createIssuer(issuerType string, issuerCohort int, maxTokens int, expiresAt *time.Time) error {
