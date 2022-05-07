@@ -20,5 +20,12 @@ func (c *Server) SetupCronTasks() {
 	}); err != nil {
 		panic(err)
 	}
+	if _, err := cron.AddFunc(cadence, func() {
+		if err := c.rotateTimeAwareIssuers(); err != nil {
+			panic(err)
+		}
+	}); err != nil {
+		panic(err)
+	}
 	cron.Start()
 }

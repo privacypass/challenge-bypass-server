@@ -1,7 +1,6 @@
 package server
 
 import (
-	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -19,6 +18,7 @@ import (
 	"github.com/lib/pq"
 	cache "github.com/patrickmn/go-cache"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/sirupsen/logrus"
 )
 
 // CachingConfig is how long data is cached
@@ -459,6 +459,68 @@ func (c *Server) rotateIssuers() error {
 	return nil
 }
 
+// rotateTimeAwareIssuers is the function that rotates
+func (c *Server) rotateTimeAwareIssuers() error {
+	cfg := c.dbConfig
+
+	tx := c.db.MustBegin()
+
+	var err error = nil
+
+	defer func() {
+		if err != nil {
+			err = tx.Rollback()
+			return
+		}
+		err = tx.Commit()
+	}()
+
+	fetchedIssuers := []TimeAwareIssuer{}
+
+	// we need to get all of the time aware issuers that
+	// 1. are not expired
+	// 2. now is after valid_from
+	// 3. have max(time_aware_keys.end_at) < buffer
+
+	err = tx.Select(
+		&fetchedIssuers,
+		`
+			select
+				tai.id, tai.issuer_type, tai.issuer_cohort, tai.max_tokens, tai.version,
+				tai.buffer, tai.valid_from, tai.last_rotated_at, tai.expires_at, tai.duration,
+				tai.created_at
+			from
+				time_aware_issuers tai
+				join time_aware_keys tak on (tak.issuer_id = tai.id)
+			where
+				tai.expires_at is not null and tai.expires_at < now()
+				and max(tak.end_at) < now() + $1 * tai.duration::interval
+			for update skip locked
+		`, cfg.DefaultDaysBeforeExpiry,
+	)
+	if err != nil {
+		return err
+	}
+
+	// for each issuer fetched
+	for _, issuer := range fetchedIssuers {
+		// populate the buffer of keys for the time aware issuer
+		if err := txPopulateTimeAwareKeys(c.Logger, tx, issuer); err != nil {
+			tx.Rollback()
+			return fmt.Errorf("failed to close rows on time aware issuer creation: %w", err)
+		}
+		// denote that the time aware issuer was rotated at this time
+		if _, err = tx.Exec(
+			`UPDATE time_aware_issuers SET rotated_at = now() where id = $1`,
+			issuer.ID,
+		); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 // createTimeAwareIssuer - creation of a time aware issuer
 func (c *Server) createTimeAwareIssuer(issuer TimeAwareIssuer) error {
 	defer incrementCounter(createTimeAwareIssuerCounter)
@@ -466,15 +528,7 @@ func (c *Server) createTimeAwareIssuer(issuer TimeAwareIssuer) error {
 		issuer.MaxTokens = 40
 	}
 
-	duration, err := timeutils.ParseDuration(issuer.Duration)
-	if err != nil {
-		return fmt.Errorf("failed to parse issuer duration: %w", err)
-	}
-
-	tx, err := c.db.BeginTx(context.Background(), nil)
-	if err != nil {
-		return fmt.Errorf("failed to aquire db tx: %w", err)
-	}
+	tx := c.db.MustBegin()
 
 	queryTimer := prometheus.NewTimer(createTimeLimitedIssuerDBDuration)
 	rows, err := tx.Query(
@@ -518,14 +572,38 @@ func (c *Server) createTimeAwareIssuer(issuer TimeAwareIssuer) error {
 		return fmt.Errorf("failed to close rows on time aware issuer creation: %w", err)
 	}
 
-	// time to create the keys associated with the issuer
-	issuer.Keys = []TimeAwareKeys{}
+	if err := txPopulateTimeAwareKeys(c.Logger, tx, issuer); err != nil {
+		tx.Rollback()
+		return fmt.Errorf("failed to close rows on time aware issuer creation: %w", err)
+	}
+	queryTimer.ObserveDuration()
+	return tx.Commit()
+}
+
+// on the transaction, populate time aware keys for the time aware issuer
+func txPopulateTimeAwareKeys(logger *logrus.Logger, tx *sqlx.Tx, issuer TimeAwareIssuer) error {
+
+	// get the duration from the issuer
+	duration, err := timeutils.ParseDuration(issuer.Duration)
+	if err != nil {
+		return fmt.Errorf("failed to parse issuer duration: %w", err)
+	}
+
 	start := issuer.ValidFrom
+	i := 0
+	// time to create the keys associated with the issuer
+	if issuer.Keys == nil || len(issuer.Keys) == 0 {
+		issuer.Keys = []TimeAwareKeys{}
+	} else {
+		// if the issuer has keys already, start needs to be the last item in slice
+		start = issuer.Keys[len(issuer.Keys)-1].EndAt
+		i = len(issuer.Keys)
+	}
 
 	valueFmtStr := ""
 
 	// for i in buffer, create signing keys for each
-	for i := 0; i < issuer.Buffer; i++ {
+	for ; i < issuer.Buffer; i++ {
 		// start/end, increment every iteration
 		end, err := duration.From(*start)
 		if err != nil {
@@ -535,14 +613,14 @@ func (c *Server) createTimeAwareIssuer(issuer TimeAwareIssuer) error {
 
 		signingKey, err := crypto.RandomSigningKey()
 		if err != nil {
-			c.Logger.Error("Error generating key")
+			logger.Error("Error generating key")
 			tx.Rollback()
 			return err
 		}
 
 		signingKeyTxt, err := signingKey.MarshalText()
 		if err != nil {
-			c.Logger.Error("Error marshalling signing key")
+			logger.Error("Error marshalling signing key")
 			tx.Rollback()
 			return err
 		}
@@ -550,7 +628,7 @@ func (c *Server) createTimeAwareIssuer(issuer TimeAwareIssuer) error {
 		issuer.Keys = append(issuer.Keys, TimeAwareKeys{
 			SigningKey: signingKeyTxt,
 			Cohort:     issuer.IssuerCohort,
-			IssuerID:   &issuerID,
+			IssuerID:   issuer.ID,
 			StartAt:    start,
 			EndAt:      end,
 		})
@@ -571,7 +649,7 @@ func (c *Server) createTimeAwareIssuer(issuer TimeAwareIssuer) error {
 			v.IssuerID, v.SigningKey, v.Cohort, v.StartAt, v.EndAt)
 	}
 
-	rows, err = tx.Query(
+	rows, err := tx.Query(
 		fmt.Sprintf(`
 		INSERT INTO time_aware_keys
 			(
@@ -583,14 +661,11 @@ func (c *Server) createTimeAwareIssuer(issuer TimeAwareIssuer) error {
 			)
 		VALUES %s`, valueFmtStr), values...)
 	if err != nil {
-		c.Logger.Error("Could not insert the new issuer keys into the DB")
-		queryTimer.ObserveDuration()
+		logger.Error("Could not insert the new issuer keys into the DB")
 		tx.Rollback()
 		return err
 	}
-	defer rows.Close()
-	queryTimer.ObserveDuration()
-	return tx.Commit()
+	return rows.Close()
 }
 
 func (c *Server) createIssuer(issuerType string, issuerCohort int, maxTokens int, expiresAt *time.Time) error {
