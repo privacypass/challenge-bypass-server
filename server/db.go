@@ -68,6 +68,7 @@ type IssuerV3 struct {
 // IssuerV3Keys - an issuer that uses time based keys
 type IssuerV3Keys struct {
 	SigningKey []byte     `json:"-" db:"signing_key"`
+	PublicKey  string     `json:"-" db:"public_key"`
 	Cohort     int        `json:"cohort" db:"cohort"`
 	IssuerID   *uuid.UUID `json:"issuer_id" db:"issuer_id"`
 	CreatedAt  *time.Time `json:"created_at" db:"created_at"`
@@ -461,8 +462,7 @@ func (c *Server) rotateIssuers() error {
 }
 
 // rotateIssuerV3s is the function that rotates
-func (c *Server) rotateIssuerV3s() error {
-	cfg := c.dbConfig
+func (c *Server) rotateIssuersV3() error {
 
 	tx := c.db.MustBegin()
 
@@ -627,8 +627,16 @@ func txPopulateIssuerV3Keys(logger *logrus.Logger, tx *sqlx.Tx, issuer IssuerV3)
 			return err
 		}
 
+		pubKeyTxt, err := signingKey.PublicKey().MarshalText()
+		if err != nil {
+			logger.Error("Error marshalling public key")
+			tx.Rollback()
+			return err
+		}
+
 		issuer.Keys = append(issuer.Keys, IssuerV3Keys{
 			SigningKey: signingKeyTxt,
+			PublicKey:  string(pubKeyTxt),
 			Cohort:     issuer.IssuerCohort,
 			IssuerID:   issuer.ID,
 			StartAt:    start,
@@ -648,7 +656,7 @@ func txPopulateIssuerV3Keys(logger *logrus.Logger, tx *sqlx.Tx, issuer IssuerV3)
 	// create our value params for insertion
 	for _, v := range issuer.Keys {
 		values = append(values,
-			v.IssuerID, v.SigningKey, v.SigningKey.PublicKey(), v.Cohort, v.StartAt, v.EndAt)
+			v.IssuerID, v.SigningKey, v.PublicKey, v.Cohort, v.StartAt, v.EndAt)
 	}
 
 	rows, err := tx.Query(
