@@ -29,7 +29,7 @@ type issuerCreateRequest struct {
 	ExpiresAt *time.Time `json:"expires_at"`
 }
 
-type timeAwareIssuerCreateRequest struct {
+type issuerV3CreateRequest struct {
 	Name      string     `json:"name"`
 	Cohort    int        `json:"cohort"`
 	MaxTokens int        `json:"max_tokens"`
@@ -170,12 +170,12 @@ func (c *Server) issuerGetAllHandler(w http.ResponseWriter, r *http.Request) *ha
 	return nil
 }
 
-// timeAwareIssuerCreateHandler - creation of a time aware issuer
-func (c *Server) timeAwareIssuerCreateHandler(w http.ResponseWriter, r *http.Request) *handlers.AppError {
+// issuerV3CreateHandler - creation of a time aware issuer
+func (c *Server) issuerV3CreateHandler(w http.ResponseWriter, r *http.Request) *handlers.AppError {
 	log := lg.Log(r.Context())
 
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxRequestSize))
-	var req timeAwareIssuerCreateRequest
+	var req issuerV3CreateRequest
 	if err := decoder.Decode(&req); err != nil {
 		c.Logger.Error("Could not parse the request body")
 		return handlers.WrapError(err, "Could not parse the request body", 400)
@@ -191,7 +191,7 @@ func (c *Server) timeAwareIssuerCreateHandler(w http.ResponseWriter, r *http.Req
 		}
 	}
 
-	if err := c.createTimeAwareIssuer(TimeAwareIssuer{
+	if err := c.createIssuerV3(IssuerV3{
 		IssuerType:   req.Name,
 		IssuerCohort: req.Cohort,
 		MaxTokens:    req.MaxTokens,
@@ -269,6 +269,6 @@ func (c *Server) issuerRouterV3() chi.Router {
 	if os.Getenv("ENV") == "production" {
 		r.Use(middleware.SimpleTokenAuthorizedOnly)
 	}
-	r.Method("POST", "/", middleware.InstrumentHandler("CreateIssuerV3", handlers.AppHandler(c.timeAwareIssuerCreateHandler)))
+	r.Method("POST", "/", middleware.InstrumentHandler("CreateIssuerV3", handlers.AppHandler(c.issuerV3CreateHandler)))
 	return r
 }

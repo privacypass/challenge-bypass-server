@@ -21,7 +21,7 @@ func (c *Server) SetupCronTasks() {
 		panic(err)
 	}
 	if _, err := cron.AddFunc(cadence, func() {
-		if err := c.rotateTimeAwareIssuers(); err != nil {
+		if err := c.rotateIssuerV3(); err != nil {
 			panic(err)
 		}
 	}); err != nil {

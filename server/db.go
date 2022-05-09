@@ -49,24 +49,24 @@ type issuer struct {
 	Version      int         `db:"version"`
 }
 
-// TimeAwareIssuer - an issuer that uses time based keys
-type TimeAwareIssuer struct {
-	ID            *uuid.UUID      `json:"id" db:"id"`
-	IssuerType    string          `json:"issuer_type" db:"issuer_type"`
-	IssuerCohort  int             `json:"issuer_cohort" db:"issuer_cohort"`
-	MaxTokens     int             `json:"max_tokens" db:"max_tokens"`
-	CreatedAt     *time.Time      `json:"created_at" db:"created_at"`
-	ExpiresAt     *time.Time      `json:"expires_at" db:"expires_at"`
-	LastRotatedAt *time.Time      `json:"last_rotated_at" db:"last_rotated_at"`
-	ValidFrom     *time.Time      `json:"valid_from" db:"valid_from"`
-	Version       int             `json:"version" db:"version"`
-	Buffer        int             `json:"buffer" db:"buffer"`
-	Duration      string          `json:"duration" db:"duration"`
-	Keys          []TimeAwareKeys `json:"keys"`
+// IssuerV3 - an issuer that uses time based keys
+type IssuerV3 struct {
+	ID            *uuid.UUID     `json:"id" db:"id"`
+	IssuerType    string         `json:"issuer_type" db:"issuer_type"`
+	IssuerCohort  int            `json:"issuer_cohort" db:"issuer_cohort"`
+	MaxTokens     int            `json:"max_tokens" db:"max_tokens"`
+	CreatedAt     *time.Time     `json:"created_at" db:"created_at"`
+	ExpiresAt     *time.Time     `json:"expires_at" db:"expires_at"`
+	LastRotatedAt *time.Time     `json:"last_rotated_at" db:"last_rotated_at"`
+	ValidFrom     *time.Time     `json:"valid_from" db:"valid_from"`
+	Version       int            `json:"version" db:"version"`
+	Buffer        int            `json:"buffer" db:"buffer"`
+	Duration      string         `json:"duration" db:"duration"`
+	Keys          []IssuerV3Keys `json:"keys"`
 }
 
-// TimeAwareKeys - an issuer that uses time based keys
-type TimeAwareKeys struct {
+// IssuerV3Keys - an issuer that uses time based keys
+type IssuerV3Keys struct {
 	SigningKey []byte     `json:"-" db:"signing_key"`
 	Cohort     int        `json:"cohort" db:"cohort"`
 	IssuerID   *uuid.UUID `json:"issuer_id" db:"issuer_id"`
@@ -186,9 +186,9 @@ var (
 		Help: "Number of create issuer attempts",
 	})
 
-	createTimeAwareIssuerCounter = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "create_time_aware_issuer_count",
-		Help: "Number of create time aware issuer attempts",
+	createIssuerV3Counter = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "create_issuer_v3_count",
+		Help: "Number of create v3 issuer attempts",
 	})
 
 	redeemTokenCounter = prometheus.NewCounter(prometheus.CounterOpts{
@@ -406,6 +406,7 @@ func (c *Server) rotateIssuers() error {
 			WHERE expires_at IS NOT NULL
 			AND rotated_at IS NULL
 			AND expires_at < NOW() + $1 * INTERVAL '1 day'
+			AND version < 3
 		FOR UPDATE SKIP LOCKED`, cfg.DefaultDaysBeforeExpiry,
 	)
 	if err != nil {
@@ -459,8 +460,8 @@ func (c *Server) rotateIssuers() error {
 	return nil
 }
 
-// rotateTimeAwareIssuers is the function that rotates
-func (c *Server) rotateTimeAwareIssuers() error {
+// rotateIssuerV3s is the function that rotates
+func (c *Server) rotateIssuerV3s() error {
 	cfg := c.dbConfig
 
 	tx := c.db.MustBegin()
@@ -475,28 +476,29 @@ func (c *Server) rotateTimeAwareIssuers() error {
 		err = tx.Commit()
 	}()
 
-	fetchedIssuers := []TimeAwareIssuer{}
+	fetchedIssuers := []IssuerV3{}
 
-	// we need to get all of the time aware issuers that
+	// we need to get all of the v3 issuers that
 	// 1. are not expired
 	// 2. now is after valid_from
-	// 3. have max(time_aware_keys.end_at) < buffer
+	// 3. have max(issuer_v3.end_at) < buffer
 
 	err = tx.Select(
 		&fetchedIssuers,
 		`
 			select
-				tai.id, tai.issuer_type, tai.issuer_cohort, tai.max_tokens, tai.version,
-				tai.buffer, tai.valid_from, tai.last_rotated_at, tai.expires_at, tai.duration,
-				tai.created_at
+				i.id, i.issuer_type, i.issuer_cohort, i.max_tokens, i.version,
+				i.buffer, i.valid_from, i.last_rotated_at, i.expires_at, i.duration,
+				i.created_at
 			from
-				time_aware_issuers tai
-				join time_aware_keys tak on (tak.issuer_id = tai.id)
+				v3_issuers i
+				join v3_issuer_keys ik on (ik.issuer_id = i.issuer_id)
 			where
-				tai.expires_at is not null and tai.expires_at < now()
-				and max(tak.end_at) < now() + $1 * tai.duration::interval
+				i.version = 3
+				and i.expires_at is not null and i.expires_at < now()
+				and greatest(ik.end_at) < now() + i.buffer * i.duration::interval
 			for update skip locked
-		`, cfg.DefaultDaysBeforeExpiry,
+		`,
 	)
 	if err != nil {
 		return err
@@ -504,14 +506,14 @@ func (c *Server) rotateTimeAwareIssuers() error {
 
 	// for each issuer fetched
 	for _, issuer := range fetchedIssuers {
-		// populate the buffer of keys for the time aware issuer
-		if err := txPopulateTimeAwareKeys(c.Logger, tx, issuer); err != nil {
+		// populate the buffer of keys for the v3 issuer
+		if err := txPopulateIssuerV3Keys(c.Logger, tx, issuer); err != nil {
 			tx.Rollback()
-			return fmt.Errorf("failed to close rows on time aware issuer creation: %w", err)
+			return fmt.Errorf("failed to close rows on v3 issuer creation: %w", err)
 		}
-		// denote that the time aware issuer was rotated at this time
+		// denote that the v3 issuer was rotated at this time
 		if _, err = tx.Exec(
-			`UPDATE time_aware_issuers SET rotated_at = now() where id = $1`,
+			`UPDATE v3_issuers SET last_rotated_at = now() where id = $1`,
 			issuer.ID,
 		); err != nil {
 			return err
@@ -521,9 +523,9 @@ func (c *Server) rotateTimeAwareIssuers() error {
 	return nil
 }
 
-// createTimeAwareIssuer - creation of a time aware issuer
-func (c *Server) createTimeAwareIssuer(issuer TimeAwareIssuer) error {
-	defer incrementCounter(createTimeAwareIssuerCounter)
+// createIssuerV3 - creation of a v3 issuer
+func (c *Server) createIssuerV3(issuer IssuerV3) error {
+	defer incrementCounter(createIssuerV3Counter)
 	if issuer.MaxTokens == 0 {
 		issuer.MaxTokens = 40
 	}
@@ -533,7 +535,7 @@ func (c *Server) createTimeAwareIssuer(issuer TimeAwareIssuer) error {
 	queryTimer := prometheus.NewTimer(createTimeLimitedIssuerDBDuration)
 	rows, err := tx.Query(
 		`
-		INSERT INTO time_aware_issuers
+		INSERT INTO v3_issuers
 			(
 				issuer_type,
 				issuer_cohort,
@@ -564,24 +566,24 @@ func (c *Server) createTimeAwareIssuer(issuer TimeAwareIssuer) error {
 	for rows.Next() {
 		if err := rows.Scan(&issuerID); err != nil {
 			tx.Rollback()
-			return fmt.Errorf("failed to get time aware issuer id: %w", err)
+			return fmt.Errorf("failed to get v3 issuer id: %w", err)
 		}
 	}
 	if err := rows.Close(); err != nil {
 		tx.Rollback()
-		return fmt.Errorf("failed to close rows on time aware issuer creation: %w", err)
+		return fmt.Errorf("failed to close rows on v3 issuer creation: %w", err)
 	}
 
-	if err := txPopulateTimeAwareKeys(c.Logger, tx, issuer); err != nil {
+	if err := txPopulateIssuerV3Keys(c.Logger, tx, issuer); err != nil {
 		tx.Rollback()
-		return fmt.Errorf("failed to close rows on time aware issuer creation: %w", err)
+		return fmt.Errorf("failed to close rows on v3 issuer creation: %w", err)
 	}
 	queryTimer.ObserveDuration()
 	return tx.Commit()
 }
 
-// on the transaction, populate time aware keys for the time aware issuer
-func txPopulateTimeAwareKeys(logger *logrus.Logger, tx *sqlx.Tx, issuer TimeAwareIssuer) error {
+// on the transaction, populate v3 issuer keys for the v3 issuer
+func txPopulateIssuerV3Keys(logger *logrus.Logger, tx *sqlx.Tx, issuer IssuerV3) error {
 
 	// get the duration from the issuer
 	duration, err := timeutils.ParseDuration(issuer.Duration)
@@ -593,7 +595,7 @@ func txPopulateTimeAwareKeys(logger *logrus.Logger, tx *sqlx.Tx, issuer TimeAwar
 	i := 0
 	// time to create the keys associated with the issuer
 	if issuer.Keys == nil || len(issuer.Keys) == 0 {
-		issuer.Keys = []TimeAwareKeys{}
+		issuer.Keys = []IssuerV3Keys{}
 	} else {
 		// if the issuer has keys already, start needs to be the last item in slice
 		start = issuer.Keys[len(issuer.Keys)-1].EndAt
@@ -625,7 +627,7 @@ func txPopulateTimeAwareKeys(logger *logrus.Logger, tx *sqlx.Tx, issuer TimeAwar
 			return err
 		}
 
-		issuer.Keys = append(issuer.Keys, TimeAwareKeys{
+		issuer.Keys = append(issuer.Keys, IssuerV3Keys{
 			SigningKey: signingKeyTxt,
 			Cohort:     issuer.IssuerCohort,
 			IssuerID:   issuer.ID,
@@ -646,15 +648,16 @@ func txPopulateTimeAwareKeys(logger *logrus.Logger, tx *sqlx.Tx, issuer TimeAwar
 	// create our value params for insertion
 	for _, v := range issuer.Keys {
 		values = append(values,
-			v.IssuerID, v.SigningKey, v.Cohort, v.StartAt, v.EndAt)
+			v.IssuerID, v.SigningKey, v.SigningKey.PublicKey(), v.Cohort, v.StartAt, v.EndAt)
 	}
 
 	rows, err := tx.Query(
 		fmt.Sprintf(`
-		INSERT INTO time_aware_keys
+		INSERT INTO v3_issuer_keys
 			(
-				time_aware_issuer_id,
+				issuer_id,
 				signing_key,
+				public_key,
 				cohort,
 				start_at,
 				end_at
