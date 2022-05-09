@@ -2,10 +2,12 @@ package kafka
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 
 	crypto "github.com/brave-intl/challenge-bypass-ristretto-ffi"
+	"github.com/brave-intl/challenge-bypass-server/avro/generated"
 	avroSchema "github.com/brave-intl/challenge-bypass-server/avro/generated"
 	"github.com/brave-intl/challenge-bypass-server/btd"
 	cbpServer "github.com/brave-intl/challenge-bypass-server/server"
@@ -56,6 +58,16 @@ func SignedBlindedTokenIssuerHandler(
 			})
 			continue
 		}
+		// validate that the number of blinded tokens is evenly divisable
+		if len(request.Blinded_tokens)%issuer.Buffer != 0 {
+			blindedTokenResults = append(blindedTokenResults, avroSchema.SigningResult{
+				Signed_tokens:     nil,
+				Issuer_public_key: "",
+				Status:            INVALID_ISSUER,
+				Associated_data:   request.Associated_data,
+			})
+			continue
+		}
 
 		var blindedTokens []*crypto.BlindedToken
 		// Iterate over the provided tokens and create data structure from them,
@@ -75,61 +87,107 @@ func SignedBlindedTokenIssuerHandler(
 			}
 			blindedTokens = append(blindedTokens, &blindedToken)
 		}
-		// @TODO: If one token fails they will all fail. Assess this behavior
-		signedTokens, dleqProof, err := btd.ApproveTokens(blindedTokens, issuer.SigningKey)
-		if err != nil {
-			logger.Error().Msg(fmt.Sprintf("Request %s: Could not approve new tokens: %e", blindedTokenRequestSet.Request_id, err))
-			blindedTokenResults = append(blindedTokenResults, avroSchema.SigningResult{
-				Signed_tokens:     nil,
-				Issuer_public_key: "",
-				Status:            ERROR,
-				Associated_data:   request.Associated_data,
-			})
-			continue
-		}
-		marshaledDLEQProof, err := dleqProof.MarshalText()
-		if err != nil {
-			return errors.New(
-				fmt.Sprintf(
-					"Request %s: Could not marshal DLEQ proof: %e",
-					blindedTokenRequestSet.Request_id,
-					err,
-				),
-			)
-		}
-		var marshaledTokens []string
-		for _, token := range signedTokens {
-			marshaledToken, err := token.MarshalText()
+
+		keyIdx := -1
+		batchSize := len(blindedTokens) / issuer.Buffer
+		// examples - we already validated evenly divisable
+		// 40 tokens ... 1 as buffer ... batch size 40
+		// 40 tokens ... 10 as buffer ... batch size 4
+		for i := 0; i < len(blindedTokens); i += batchSize {
+			keyIdx += 1
+			var associatedData = map[string]interface{}{}
+			err := json.Unmarshal(request.Associated_data, &associatedData)
+			if err != nil {
+				logger.Error().Msg(fmt.Sprintf("Request %s: Could not approve new tokens: %e", blindedTokenRequestSet.Request_id, err))
+				blindedTokenResults = append(blindedTokenResults, avroSchema.SigningResult{
+					Signed_tokens:     nil,
+					Issuer_public_key: "",
+					Status:            ERROR,
+					Associated_data:   request.Associated_data,
+				})
+				continue
+			}
+			// start/end key validity
+			start := issuer.Keys[keyIdx].StartAt
+			end := issuer.Keys[keyIdx].EndAt
+
+			if start != nil && end != nil {
+				associatedData["valid_from"] = start
+				associatedData["valid_to"] = end
+				associatedDataJson, err := json.Marshal(associatedData)
+				if err != nil {
+					logger.Error().Msg(fmt.Sprintf("Request %s: failed to update associated data: %e", blindedTokenRequestSet.Request_id, err))
+					blindedTokenResults = append(blindedTokenResults, avroSchema.SigningResult{
+						Signed_tokens:     nil,
+						Issuer_public_key: "",
+						Status:            ERROR,
+						Associated_data:   request.Associated_data,
+					})
+					continue
+				}
+				// add valid from / valid to to the associated data
+				request.Associated_data = generated.Bytes(associatedDataJson)
+			}
+
+			// @TODO: If one token fails they will all fail. Assess this behavior
+			signedTokens, dleqProof, err := btd.ApproveTokens(blindedTokens[i:batchSize], issuer.Keys[keyIdx].SigningKey)
+			if err != nil {
+				logger.Error().Msg(fmt.Sprintf("Request %s: Could not approve new tokens: %e", blindedTokenRequestSet.Request_id, err))
+				blindedTokenResults = append(blindedTokenResults, avroSchema.SigningResult{
+					Signed_tokens:     nil,
+					Issuer_public_key: "",
+					Status:            ERROR,
+					Associated_data:   request.Associated_data,
+				})
+				continue
+			}
+			marshaledDLEQProof, err := dleqProof.MarshalText()
 			if err != nil {
 				return errors.New(
 					fmt.Sprintf(
-						"Request %s: Could not marshal new tokens to bytes: %e",
+						"Request %s: Could not marshal DLEQ proof: %e",
 						blindedTokenRequestSet.Request_id,
 						err,
 					),
 				)
 			}
-			marshaledTokens = append(marshaledTokens, string(marshaledToken[:]))
+			var marshaledTokens []string
+			for _, token := range signedTokens {
+				marshaledToken, err := token.MarshalText()
+				if err != nil {
+					return errors.New(
+						fmt.Sprintf(
+							"Request %s: Could not marshal new tokens to bytes: %e",
+							blindedTokenRequestSet.Request_id,
+							err,
+						),
+					)
+				}
+				marshaledTokens = append(marshaledTokens, string(marshaledToken[:]))
+			}
+			publicKey := issuer.SigningKey.PublicKey()
+			marshaledPublicKey, err := publicKey.MarshalText()
+			if err != nil {
+				return errors.New(
+					fmt.Sprintf(
+						"Request %s: Could not marshal signing key: %e",
+						blindedTokenRequestSet.Request_id,
+						err,
+					),
+				)
+			}
+			// FIXME: add start/end to associated data
+			blindedTokenResults = append(blindedTokenResults, avroSchema.SigningResult{
+				Signed_tokens:     marshaledTokens,
+				Proof:             string(marshaledDLEQProof),
+				Issuer_public_key: string(marshaledPublicKey),
+				Status:            OK,
+				Associated_data:   request.Associated_data,
+			})
 		}
-		publicKey := issuer.SigningKey.PublicKey()
-		marshaledPublicKey, err := publicKey.MarshalText()
-		if err != nil {
-			return errors.New(
-				fmt.Sprintf(
-					"Request %s: Could not marshal signing key: %e",
-					blindedTokenRequestSet.Request_id,
-					err,
-				),
-			)
-		}
-		blindedTokenResults = append(blindedTokenResults, avroSchema.SigningResult{
-			Signed_tokens:     marshaledTokens,
-			Proof:             string(marshaledDLEQProof),
-			Issuer_public_key: string(marshaledPublicKey),
-			Status:            OK,
-			Associated_data:   request.Associated_data,
-		})
+
 	}
+
 	resultSet := avroSchema.SigningResultSet{
 		Request_id: blindedTokenRequestSet.Request_id,
 		Data:       blindedTokenResults,

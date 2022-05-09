@@ -103,7 +103,7 @@ func (c *Server) issuerHandlerV1(w http.ResponseWriter, r *http.Request) *handle
 		if !issuer.ExpiresAt.IsZero() {
 			expiresAt = issuer.ExpiresAt.Format(time.RFC3339)
 		}
-		err := json.NewEncoder(w).Encode(issuerResponse{issuer.ID, issuer.IssuerType, issuer.SigningKey.PublicKey(), expiresAt, issuer.IssuerCohort})
+		err := json.NewEncoder(w).Encode(issuerResponse{issuer.ID.String(), issuer.IssuerType, issuer.SigningKey.PublicKey(), expiresAt, issuer.IssuerCohort})
 		if err != nil {
 			c.Logger.Error("Error encoding the issuer response")
 			panic(err)
@@ -132,7 +132,7 @@ func (c *Server) issuerHandlerV2(w http.ResponseWriter, r *http.Request) *handle
 		if !issuer.ExpiresAt.IsZero() {
 			expiresAt = issuer.ExpiresAt.Format(time.RFC3339)
 		}
-		err := json.NewEncoder(w).Encode(issuerResponse{issuer.ID, issuer.IssuerType, issuer.SigningKey.PublicKey(), expiresAt, issuer.IssuerCohort})
+		err := json.NewEncoder(w).Encode(issuerResponse{issuer.ID.String(), issuer.IssuerType, issuer.SigningKey.PublicKey(), expiresAt, issuer.IssuerCohort})
 		if err != nil {
 			c.Logger.Error("Error encoding the issuer response")
 			panic(err)
@@ -159,7 +159,7 @@ func (c *Server) issuerGetAllHandler(w http.ResponseWriter, r *http.Request) *ha
 		if !issuer.ExpiresAt.IsZero() {
 			expiresAt = issuer.ExpiresAt.Format(time.RFC3339)
 		}
-		respIssuers = append(respIssuers, issuerResponse{issuer.ID, issuer.IssuerType, issuer.SigningKey.PublicKey(), expiresAt, issuer.IssuerCohort})
+		respIssuers = append(respIssuers, issuerResponse{issuer.ID.String(), issuer.IssuerType, issuer.SigningKey.PublicKey(), expiresAt, issuer.IssuerCohort})
 	}
 
 	err := json.NewEncoder(w).Encode(respIssuers)
@@ -191,11 +191,11 @@ func (c *Server) issuerV3CreateHandler(w http.ResponseWriter, r *http.Request) *
 		}
 	}
 
-	if err := c.createIssuerV3(IssuerV3{
+	if err := c.createV3Issuer(Issuer{
 		IssuerType:   req.Name,
 		IssuerCohort: req.Cohort,
 		MaxTokens:    req.MaxTokens,
-		ExpiresAt:    req.ExpiresAt,
+		ExpiresAt:    *req.ExpiresAt,
 		Buffer:       req.Buffer,
 		Duration:     req.Duration,
 	}); err != nil {
