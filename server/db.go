@@ -158,7 +158,7 @@ func (c *Server) InitDb() {
 	if err != nil {
 		panic(err)
 	}
-	err = m.Migrate(6)
+	err = m.Migrate(7)
 	if err != migrate.ErrNoChange && err != nil {
 		panic(err)
 	}
