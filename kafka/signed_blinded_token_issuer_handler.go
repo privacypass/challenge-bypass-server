@@ -125,7 +125,7 @@ func SignedBlindedTokenIssuerHandler(
 					})
 					continue
 				}
-				// add valid from / valid to to the associated data
+				// add valid from / valid to the associated data
 				request.Associated_data = generated.Bytes(associatedDataJson)
 			}
 
