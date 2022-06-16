@@ -60,7 +60,6 @@ func main() {
 	// Initialize databases and cron tasks before the Kafka processors and server start
 	srv.InitDb()
 	srv.InitDynamo()
-	// srv.SetupCronTasks()
 
 	zeroLogger.Trace().Msg("Persistence and cron jobs initialized")
 
