@@ -89,6 +89,7 @@ type Issuer struct {
 	Version      int          `json:"version"`
 	ValidFrom    *time.Time   `json:"valid_from"`
 	Buffer       int          `json:"buffer"`
+	Overlap      int          `json:"overlap"`
 	Duration     string       `json:"duration"`
 	Keys         []IssuerKeys `json:"keys"`
 }

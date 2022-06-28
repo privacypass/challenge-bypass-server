@@ -197,6 +197,8 @@ func (c *Server) issuerV3CreateHandler(w http.ResponseWriter, r *http.Request) *
 		MaxTokens:    req.MaxTokens,
 		ExpiresAt:    *req.ExpiresAt,
 		Buffer:       req.Buffer,
+		Overlap:      req.Overlap,
+		ValidFrom:    req.ValidFrom,
 		Duration:     req.Duration,
 	}); err != nil {
 		log.Errorf("%s", err)
@@ -207,7 +209,7 @@ func (c *Server) issuerV3CreateHandler(w http.ResponseWriter, r *http.Request) *
 		}
 	}
 
-	w.WriteHeader(http.StatusOK)
+	w.WriteHeader(http.StatusCreated)
 	return nil
 }
 
