@@ -344,12 +344,10 @@ func (c *Server) FetchAllIssuers() (*[]Issuer, error) {
 }
 
 // RotateIssuers is the function that rotates
-func (c *Server) rotateIssuers() error {
+func (c *Server) rotateIssuers() (err error) {
 	cfg := c.dbConfig
 
 	tx := c.db.MustBegin()
-
-	var err error = nil
 
 	defer func() {
 		if err != nil {
