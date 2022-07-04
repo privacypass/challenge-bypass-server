@@ -37,7 +37,7 @@ func StartConsumers(providedServer *server.Server, logger *zerolog.Logger) error
 		brokers = strings.Split(os.Getenv("KAFKA_BROKERS"), ",")
 	}
 	topicMappings := []TopicMapping{
-		TopicMapping{
+		{
 			Topic: adsRequestRedeemV1Topic,
 			ResultProducer: kafka.NewWriter(kafka.WriterConfig{
 				Brokers: brokers,
@@ -47,7 +47,7 @@ func StartConsumers(providedServer *server.Server, logger *zerolog.Logger) error
 			Processor: SignedTokenRedeemHandler,
 			Group:     adsConsumerGroupV1,
 		},
-		TopicMapping{
+		{
 			Topic: adsRequestSignV1Topic,
 			ResultProducer: kafka.NewWriter(kafka.WriterConfig{
 				Brokers: brokers,
@@ -112,6 +112,7 @@ func StartConsumers(providedServer *server.Server, logger *zerolog.Logger) error
 								logger.Error().Err(err).Msg("Processing failed.")
 							}
 						}(msg, topicMapping, providedServer, logger)
+
 						if err := consumer.CommitMessages(ctx, msg); err != nil {
 							logger.Error().Msg(fmt.Sprintf("Failed to commit: %s", err))
 						}
