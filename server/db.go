@@ -344,12 +344,10 @@ func (c *Server) FetchAllIssuers() (*[]Issuer, error) {
 }
 
 // RotateIssuers is the function that rotates
-func (c *Server) rotateIssuers() error {
+func (c *Server) rotateIssuers() (err error) {
 	cfg := c.dbConfig
 
 	tx := c.db.MustBegin()
-
-	var err error = nil
 
 	defer func() {
 		if err != nil {
@@ -388,13 +386,15 @@ func (c *Server) rotateIssuers() error {
 			rotationIssuer.MaxTokens = 40
 		}
 
-		signingKey, err := crypto.RandomSigningKey()
-		if err != nil {
+		signingKey, errSigningKey := crypto.RandomSigningKey()
+		if errSigningKey != nil {
+			err = errSigningKey
 			return err
 		}
 
-		signingKeyTxt, err := signingKey.MarshalText()
-		if err != nil {
+		signingKeyTxt, errSigningKeyText := signingKey.MarshalText()
+		if errSigningKeyText != nil {
+			err = errSigningKeyText
 			return err
 		}
 
