@@ -233,6 +233,11 @@ func (c *Server) issuerCreateHandler(w http.ResponseWriter, r *http.Request) *ha
 		}
 	}
 
+	// set the default cohort for v1 clients
+	if req.Cohort == 0 {
+		req.Cohort = v1Cohort
+	}
+
 	if err := c.createIssuer(req.Name, req.Cohort, req.MaxTokens, req.ExpiresAt); err != nil {
 		log.Errorf("%s", err)
 		return &handlers.AppError{
@@ -263,6 +268,7 @@ func (c *Server) issuerRouterV2() chi.Router {
 		r.Use(middleware.SimpleTokenAuthorizedOnly)
 	}
 	r.Method("GET", "/{type}", middleware.InstrumentHandler("GetIssuerV2", handlers.AppHandler(c.issuerHandlerV2)))
+	r.Method("GET", "/{type}", middleware.InstrumentHandler("GetIssuer", handlers.AppHandler(c.issuerHandlerV2)))
 	return r
 }
 

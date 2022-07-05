@@ -199,6 +199,11 @@ func (c *Server) blindedTokenRedeemHandler(w http.ResponseWriter, r *http.Reques
 				Code:    http.StatusInternalServerError,
 			}
 		}
+		err := json.NewEncoder(w).Encode(blindedTokenRedeemResponse{verifiedCohort})
+		if err != nil {
+			c.Logger.Error("Could not encode the blinded token")
+			panic(err)
+		}
 		response = blindedTokenRedeemResponse{verifiedCohort}
 	}
 	return handlers.RenderContent(r.Context(), response, w, http.StatusOK)

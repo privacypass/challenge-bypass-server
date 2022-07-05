@@ -1,3 +1,6 @@
+# IDE
+.idea
+
 /.GOPATH
 _vendor*/
 vendor/
