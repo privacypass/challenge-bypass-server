@@ -488,7 +488,6 @@ func redeemTokenWithDB(db Queryable, stringIssuer string, preimage *crypto.Token
 	rows, err := db.Query(
 		`INSERT INTO redemptions(id, issuer_type, ts, payload) VALUES ($1, $2, NOW(), $3)`, preimageTxt, stringIssuer, payload)
 	if err != nil {
-		defer rows.Close()
 		if err, ok := err.(*pq.Error); ok && err.Code == "23505" { // unique constraint violation
 			return errDuplicateRedemption
 		}
