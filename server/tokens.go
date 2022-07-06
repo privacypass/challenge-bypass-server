@@ -276,7 +276,7 @@ func (c *Server) blindedTokenBulkRedeemHandler(w http.ResponseWriter, r *http.Re
 		}
 	}
 
-	return nil
+	return handlers.RenderContent(r.Context(), nil, w, http.StatusOK)
 }
 
 func (c *Server) blindedTokenRedemptionHandler(w http.ResponseWriter, r *http.Request) *handlers.AppError {
