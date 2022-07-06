@@ -319,6 +319,12 @@ func (c *Server) fetchIssuers(issuerType string) (*[]Issuer, error) {
 }
 
 func (c *Server) FetchAllIssuers() (*[]Issuer, error) {
+	if c.caches != nil {
+		if cached, found := c.caches["issuers"].Get("all"); found {
+			return cached.(*[]Issuer), nil
+		}
+	}
+
 	fetchedIssuers := []issuer{}
 	err := c.db.Select(
 		&fetchedIssuers,
@@ -339,6 +345,10 @@ func (c *Server) FetchAllIssuers() (*[]Issuer, error) {
 		}
 
 		issuers = append(issuers, *convertedIssuer)
+	}
+
+	if c.caches != nil {
+		c.caches["issuers"].SetDefault("all", issuers)
 	}
 
 	return &issuers, nil
