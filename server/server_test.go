@@ -33,15 +33,19 @@ func TestServerTestSuite(t *testing.T) {
 }
 
 func (suite *ServerTestSuite) SetupSuite() {
-	os.Setenv("ENV", "production")
+	err := os.Setenv("ENV", "production")
+	suite.Require().NoError(err)
 
 	suite.accessToken = uuid.NewV4().String()
 	middleware.TokenList = []string{suite.accessToken}
 
 	suite.srv = &Server{}
 
-	err := suite.srv.InitDbConfig()
+	err = suite.srv.InitDbConfig()
 	suite.Require().NoError(err, "Failed to setup db conn")
+
+	suite.srv.InitDb()
+	suite.srv.InitDynamo()
 
 	suite.handler = chi.ServerBaseContext(suite.srv.setupRouter(SetupLogger(context.Background())))
 }
@@ -66,6 +70,159 @@ func (suite *ServerTestSuite) TestPing() {
 	actual, err := ioutil.ReadAll(resp.Body)
 	suite.Assert().NoError(err, "Reading response body should succeed")
 	suite.Assert().Equal(expected, string(actual), "Message should match")
+}
+
+func (suite *ServerTestSuite) TestIssueRedeem() {
+	issuerType := "test"
+	issuerCohort := v1Cohort
+	msg := "test message"
+
+	server := httptest.NewServer(suite.handler)
+	defer server.Close()
+
+	publicKey := suite.createIssuer(server.URL, issuerType, issuerCohort)
+	unblindedToken := suite.createToken(server.URL, issuerType, publicKey)
+	preimageText, sigText := suite.prepareRedemption(unblindedToken, msg)
+
+	resp, err := suite.attemptRedeem(server.URL, preimageText, sigText, issuerType, msg)
+	suite.Assert().NoError(err, "HTTP Request should complete")
+	suite.Assert().Equal(http.StatusOK, resp.StatusCode, "Attempted redemption request should succeed")
+
+	resp, err = suite.attemptRedeem(server.URL, preimageText, sigText, issuerType, msg)
+	suite.Assert().NoError(err, "HTTP Request should complete")
+	suite.Assert().Equal(http.StatusConflict, resp.StatusCode, "Attempted duplicate redemption request should fail")
+}
+
+func (suite *ServerTestSuite) TestIssuerGetAll() {
+	issuerType := "test2"
+	issuerCohort := v1Cohort
+
+	server := httptest.NewServer(suite.handler)
+	defer server.Close()
+
+	expiresAt := time.Now().AddDate(0, 0, 1)
+	suite.createIssuerWithExpiration(server.URL, issuerType, issuerCohort, expiresAt)
+	issuers := suite.getAllIssuers(server.URL)
+
+	suite.Assert().Equal(reflect.ValueOf(issuers).Len(), 1, "Exactly one issuer")
+}
+
+func (suite *ServerTestSuite) TestIssueRedeemV2() {
+	issuerType := "test2"
+	issuerCohort := v1Cohort
+	msg := "test message 2"
+
+	server := httptest.NewServer(suite.handler)
+	defer server.Close()
+
+	expiresAt := time.Now().AddDate(0, 0, 1)
+	publicKey := suite.createIssuerWithExpiration(server.URL, issuerType, issuerCohort, expiresAt)
+	issuer, _ := suite.srv.GetLatestIssuer(issuerType, issuerCohort)
+
+	unblindedToken := suite.createToken(server.URL, issuerType, publicKey)
+	preimageText, sigText := suite.prepareRedemption(unblindedToken, msg)
+	resp, err := suite.attemptRedeem(server.URL, preimageText, sigText, issuerType, msg)
+	suite.Assert().NoError(err, "HTTP Request should complete")
+	suite.Assert().Equal(http.StatusOK, resp.StatusCode, "Attempted redemption request should succeed")
+
+	body, err := ioutil.ReadAll(resp.Body)
+	suite.Require().NoError(err, "Redemption response body read must succeed")
+
+	var issuerResp blindedTokenRedeemResponse
+	err = json.Unmarshal(body, &issuerResp)
+	suite.Require().NoError(err, "Redemption response body unmarshal must succeed")
+	suite.Assert().Equal(issuerResp.Cohort, issuerCohort, "Redemption of a token should return the same cohort with which it was signed")
+
+	resp, err = suite.attemptRedeem(server.URL, preimageText, sigText, issuerType, msg)
+	suite.Assert().NoError(err, "HTTP Request should complete")
+	suite.Assert().Equal(http.StatusConflict, resp.StatusCode, "Attempted duplicate redemption request should fail")
+
+	unblindedToken = suite.createToken(server.URL, issuerType, publicKey)
+	preimageText, sigText = suite.prepareRedemption(unblindedToken, msg)
+	unblindedToken2 := suite.createToken(server.URL, issuerType, publicKey)
+	preimageText2, sigText2 := suite.prepareRedemption(unblindedToken2, msg)
+	_ = suite.srv.rotateIssuers()
+	resp, _ = suite.attemptRedeem(server.URL, preimageText, sigText, issuerType, msg)
+	suite.Assert().NoError(err, "HTTP Request should complete")
+	suite.Assert().Equal(http.StatusOK, resp.StatusCode, "Attempted redemption request should succeed")
+
+	body, err = ioutil.ReadAll(resp.Body)
+	suite.Require().NoError(err, "Redemption response body read must succeed")
+
+	err = json.Unmarshal(body, &issuerResp)
+	suite.Require().NoError(err, "Redemption response body unmarshal must succeed")
+	suite.Assert().NotEqual(issuerResp.Cohort, 1-issuerCohort, "Redemption of a token should return the same cohort with which it was signed")
+
+	_, _ = suite.srv.db.Query(`UPDATE issuers SET expires_at=$1 WHERE id=$2`, time.Now().AddDate(0, 0, -1), issuer.ID)
+	issuers, _ := suite.srv.fetchIssuers(issuerType)
+	suite.Assert().Equal(len(*issuers), 2, "There should be two issuers of same type")
+	issuer, _ = suite.srv.GetLatestIssuer(issuerType, issuerCohort)
+
+	resp, err = suite.attemptRedeem(server.URL, preimageText2, sigText2, issuerType, msg)
+	suite.Assert().NoError(err, "HTTP Request should complete")
+	suite.Assert().Equal(http.StatusBadRequest, resp.StatusCode, "Expired Issuers should fail")
+
+	publicKey = issuer.SigningKey.PublicKey()
+	unblindedToken = suite.createToken(server.URL, issuerType, publicKey)
+	preimageText, sigText = suite.prepareRedemption(unblindedToken, msg)
+	resp, err = suite.attemptRedeem(server.URL, preimageText, sigText, issuerType, msg)
+	suite.Assert().NoError(err, "HTTP Request should complete")
+	suite.Assert().Equal(http.StatusOK, resp.StatusCode, "Attempted redemption request should succeed")
+}
+
+func (suite *ServerTestSuite) TestNewIssueRedeemV2() {
+	issuerType := "test2"
+	issuerCohort := v1Cohort
+	msg := "test message 2"
+
+	server := httptest.NewServer(suite.handler)
+	defer server.Close()
+
+	expiresAt := time.Now().AddDate(0, 0, 1)
+	publicKey := suite.createIssuerWithExpiration(server.URL, issuerType, issuerCohort, expiresAt)
+	issuer, _ := suite.srv.GetLatestIssuer(issuerType, issuerCohort)
+
+	unblindedToken := suite.createCohortToken(server.URL, issuerType, issuerCohort, publicKey)
+	preimageText, sigText := suite.prepareRedemption(unblindedToken, msg)
+	resp, err := suite.attemptRedeem(server.URL, preimageText, sigText, issuerType, msg)
+	suite.Assert().NoError(err, "HTTP Request should complete")
+	suite.Assert().Equal(http.StatusOK, resp.StatusCode, "Attempted redemption request should succeed")
+
+	body, err := ioutil.ReadAll(resp.Body)
+	suite.Require().NoError(err, "Redemption response body read must succeed")
+
+	var issuerResp blindedTokenRedeemResponse
+	err = json.Unmarshal(body, &issuerResp)
+	suite.Require().NoError(err, "Redemption response body unmarshal must succeed")
+	suite.Assert().Equal(issuerResp.Cohort, issuerCohort, "Redemption of a token should return the same cohort with which it was signed")
+
+	resp, err = suite.attemptRedeem(server.URL, preimageText, sigText, issuerType, msg)
+	suite.Assert().NoError(err, "HTTP Request should complete")
+	suite.Assert().Equal(http.StatusConflict, resp.StatusCode, "Attempted duplicate redemption request should fail")
+
+	unblindedToken = suite.createCohortToken(server.URL, issuerType, issuerCohort, publicKey)
+	preimageText, sigText = suite.prepareRedemption(unblindedToken, msg)
+	unblindedToken2 := suite.createCohortToken(server.URL, issuerType, issuerCohort, publicKey)
+	preimageText2, sigText2 := suite.prepareRedemption(unblindedToken2, msg)
+	_ = suite.srv.rotateIssuers()
+	resp, _ = suite.attemptRedeem(server.URL, preimageText, sigText, issuerType, msg)
+	suite.Assert().NoError(err, "HTTP Request should complete")
+	suite.Assert().Equal(http.StatusOK, resp.StatusCode, "Attempted redemption request should succeed")
+
+	body, err = ioutil.ReadAll(resp.Body)
+	suite.Require().NoError(err, "Redemption response body read must succeed")
+
+	err = json.Unmarshal(body, &issuerResp)
+	suite.Require().NoError(err, "Redemption response body unmarshal must succeed")
+	suite.Assert().NotEqual(issuerResp.Cohort, 1-issuerCohort, "Redemption of a token should return the same cohort with which it was signed")
+
+	_, _ = suite.srv.db.Query(`UPDATE issuers SET expires_at=$1 WHERE id=$2`, time.Now().AddDate(0, 0, -1), issuer.ID)
+	issuers, _ := suite.srv.fetchIssuers(issuerType)
+	suite.Assert().Equal(len(*issuers), 2, "There should be two issuers of same type")
+
+	resp, err = suite.attemptRedeem(server.URL, preimageText2, sigText2, issuerType, msg)
+	suite.Assert().NoError(err, "HTTP Request should complete")
+	suite.Assert().Equal(http.StatusBadRequest, resp.StatusCode, "Expired Issuers should fail")
 }
 
 func (suite *ServerTestSuite) request(method string, URL string, payload io.Reader) (*http.Response, error) {
@@ -219,109 +376,12 @@ func (suite *ServerTestSuite) prepareRedemption(unblindedToken *crypto.Unblinded
 
 	return
 }
+
 func (suite *ServerTestSuite) attemptRedeem(serverURL string, preimageText []byte, sigText []byte, issuerType string, msg string) (*http.Response, error) {
 	payload := fmt.Sprintf(`{"t":"%s", "signature":"%s", "payload":"%s"}`, preimageText, sigText, msg)
 	redeemURL := fmt.Sprintf("%s/v1/blindedToken/%s/redemption/", serverURL, issuerType)
 
 	return suite.request("POST", redeemURL, bytes.NewBuffer([]byte(payload)))
-}
-
-func (suite *ServerTestSuite) TestIssueRedeem() {
-	issuerType := "test"
-	issuerCohort := v1Cohort
-	msg := "test message"
-
-	server := httptest.NewServer(suite.handler)
-	defer server.Close()
-
-	publicKey := suite.createIssuer(server.URL, issuerType, issuerCohort)
-	unblindedToken := suite.createToken(server.URL, issuerType, publicKey)
-	preimageText, sigText := suite.prepareRedemption(unblindedToken, msg)
-
-	resp, err := suite.attemptRedeem(server.URL, preimageText, sigText, issuerType, msg)
-	suite.Assert().NoError(err, "HTTP Request should complete")
-	suite.Assert().Equal(http.StatusOK, resp.StatusCode, "Attempted redemption request should succeed")
-
-	resp, err = suite.attemptRedeem(server.URL, preimageText, sigText, issuerType, msg)
-	suite.Assert().NoError(err, "HTTP Request should complete")
-	suite.Assert().Equal(http.StatusConflict, resp.StatusCode, "Attempted duplicate redemption request should fail")
-}
-
-func (suite *ServerTestSuite) TestIssuerGetAll() {
-	issuerType := "test2"
-	issuerCohort := v1Cohort
-
-	server := httptest.NewServer(suite.handler)
-	defer server.Close()
-
-	expiresAt := time.Now().AddDate(0, 0, 1)
-	suite.createIssuerWithExpiration(server.URL, issuerType, issuerCohort, expiresAt)
-	issuers := suite.getAllIssuers(server.URL)
-
-	suite.Assert().Equal(reflect.ValueOf(issuers).Len(), 1, "Exactly one issuer")
-}
-
-func (suite *ServerTestSuite) TestIssueRedeemV2() {
-	issuerType := "test2"
-	issuerCohort := v1Cohort
-	msg := "test message 2"
-
-	server := httptest.NewServer(suite.handler)
-	defer server.Close()
-
-	expiresAt := time.Now().AddDate(0, 0, 1)
-	publicKey := suite.createIssuerWithExpiration(server.URL, issuerType, issuerCohort, expiresAt)
-	issuer, _ := suite.srv.GetLatestIssuer(issuerType, issuerCohort)
-
-	unblindedToken := suite.createToken(server.URL, issuerType, publicKey)
-	preimageText, sigText := suite.prepareRedemption(unblindedToken, msg)
-	resp, err := suite.attemptRedeem(server.URL, preimageText, sigText, issuerType, msg)
-	suite.Assert().NoError(err, "HTTP Request should complete")
-	suite.Assert().Equal(http.StatusOK, resp.StatusCode, "Attempted redemption request should succeed")
-
-	body, err := ioutil.ReadAll(resp.Body)
-	suite.Require().NoError(err, "Redemption response body read must succeed")
-
-	var issuerResp blindedTokenRedeemResponse
-	err = json.Unmarshal(body, &issuerResp)
-	suite.Require().NoError(err, "Redemption response body unmarshal must succeed")
-	suite.Assert().Equal(issuerResp.Cohort, issuerCohort, "Redemption of a token should return the same cohort with which it was signed")
-
-	resp, err = suite.attemptRedeem(server.URL, preimageText, sigText, issuerType, msg)
-	suite.Assert().NoError(err, "HTTP Request should complete")
-	suite.Assert().Equal(http.StatusConflict, resp.StatusCode, "Attempted duplicate redemption request should fail")
-
-	unblindedToken = suite.createToken(server.URL, issuerType, publicKey)
-	preimageText, sigText = suite.prepareRedemption(unblindedToken, msg)
-	unblindedToken2 := suite.createToken(server.URL, issuerType, publicKey)
-	preimageText2, sigText2 := suite.prepareRedemption(unblindedToken2, msg)
-	_ = suite.srv.rotateIssuers()
-	resp, _ = suite.attemptRedeem(server.URL, preimageText, sigText, issuerType, msg)
-	suite.Assert().NoError(err, "HTTP Request should complete")
-	suite.Assert().Equal(http.StatusOK, resp.StatusCode, "Attempted redemption request should succeed")
-
-	body, err = ioutil.ReadAll(resp.Body)
-	suite.Require().NoError(err, "Redemption response body read must succeed")
-
-	err = json.Unmarshal(body, &issuerResp)
-	suite.Require().NoError(err, "Redemption response body unmarshal must succeed")
-	suite.Assert().NotEqual(issuerResp.Cohort, 1-issuerCohort, "Redemption of a token should return the same cohort with which it was signed")
-
-	_, _ = suite.srv.db.Query(`UPDATE issuers SET expires_at=$1 WHERE id=$2`, time.Now().AddDate(0, 0, -1), issuer.ID)
-	issuers, _ := suite.srv.fetchIssuers(issuerType)
-	suite.Assert().Equal(len(*issuers), 2, "There should be two issuers of same type")
-	issuer, _ = suite.srv.GetLatestIssuer(issuerType, issuerCohort)
-
-	resp, err = suite.attemptRedeem(server.URL, preimageText2, sigText2, issuerType, msg)
-	suite.Assert().NoError(err, "HTTP Request should complete")
-	suite.Assert().Equal(http.StatusBadRequest, resp.StatusCode, "Expired Issuers should fail")
-
-	publicKey = issuer.SigningKey.PublicKey()
-	unblindedToken = suite.createToken(server.URL, issuerType, publicKey)
-	preimageText, sigText = suite.prepareRedemption(unblindedToken, msg)
-	resp, err = suite.attemptRedeem(server.URL, preimageText, sigText, issuerType, msg)
-	suite.Assert().NoError(err, "HTTP Request should complete")
-	suite.Assert().Equal(http.StatusOK, resp.StatusCode, "Attempted redemption request should succeed")
 }
 
 func (suite *ServerTestSuite) createCohortToken(serverURL string, issuerType string, issuerCohort int, publicKey *crypto.PublicKey) *crypto.UnblindedToken {
@@ -365,59 +425,4 @@ func (suite *ServerTestSuite) createCohortTokens(serverURL string, issuerType st
 	suite.Require().NoError(err, "Batch verification and token unblinding must succeed")
 
 	return unblindedTokens
-}
-
-func (suite *ServerTestSuite) TestNewIssueRedeemV2() {
-	issuerType := "test2"
-	issuerCohort := 1 - v1Cohort
-	msg := "test message 2"
-
-	server := httptest.NewServer(suite.handler)
-	defer server.Close()
-
-	expiresAt := time.Now().AddDate(0, 0, 1)
-	publicKey := suite.createIssuerWithExpiration(server.URL, issuerType, issuerCohort, expiresAt)
-	issuer, _ := suite.srv.GetLatestIssuer(issuerType, issuerCohort)
-
-	unblindedToken := suite.createCohortToken(server.URL, issuerType, issuerCohort, publicKey)
-	preimageText, sigText := suite.prepareRedemption(unblindedToken, msg)
-	resp, err := suite.attemptRedeem(server.URL, preimageText, sigText, issuerType, msg)
-	suite.Assert().NoError(err, "HTTP Request should complete")
-	suite.Assert().Equal(http.StatusOK, resp.StatusCode, "Attempted redemption request should succeed")
-
-	body, err := ioutil.ReadAll(resp.Body)
-	suite.Require().NoError(err, "Redemption response body read must succeed")
-
-	var issuerResp blindedTokenRedeemResponse
-	err = json.Unmarshal(body, &issuerResp)
-	suite.Require().NoError(err, "Redemption response body unmarshal must succeed")
-	suite.Assert().Equal(issuerResp.Cohort, issuerCohort, "Redemption of a token should return the same cohort with which it was signed")
-
-	resp, err = suite.attemptRedeem(server.URL, preimageText, sigText, issuerType, msg)
-	suite.Assert().NoError(err, "HTTP Request should complete")
-	suite.Assert().Equal(http.StatusConflict, resp.StatusCode, "Attempted duplicate redemption request should fail")
-
-	unblindedToken = suite.createCohortToken(server.URL, issuerType, issuerCohort, publicKey)
-	preimageText, sigText = suite.prepareRedemption(unblindedToken, msg)
-	unblindedToken2 := suite.createCohortToken(server.URL, issuerType, issuerCohort, publicKey)
-	preimageText2, sigText2 := suite.prepareRedemption(unblindedToken2, msg)
-	_ = suite.srv.rotateIssuers()
-	resp, _ = suite.attemptRedeem(server.URL, preimageText, sigText, issuerType, msg)
-	suite.Assert().NoError(err, "HTTP Request should complete")
-	suite.Assert().Equal(http.StatusOK, resp.StatusCode, "Attempted redemption request should succeed")
-
-	body, err = ioutil.ReadAll(resp.Body)
-	suite.Require().NoError(err, "Redemption response body read must succeed")
-
-	err = json.Unmarshal(body, &issuerResp)
-	suite.Require().NoError(err, "Redemption response body unmarshal must succeed")
-	suite.Assert().NotEqual(issuerResp.Cohort, 1-issuerCohort, "Redemption of a token should return the same cohort with which it was signed")
-
-	_, _ = suite.srv.db.Query(`UPDATE issuers SET expires_at=$1 WHERE id=$2`, time.Now().AddDate(0, 0, -1), issuer.ID)
-	issuers, _ := suite.srv.fetchIssuers(issuerType)
-	suite.Assert().Equal(len(*issuers), 2, "There should be two issuers of same type")
-
-	resp, err = suite.attemptRedeem(server.URL, preimageText2, sigText2, issuerType, msg)
-	suite.Assert().NoError(err, "HTTP Request should complete")
-	suite.Assert().Equal(http.StatusBadRequest, resp.StatusCode, "Expired Issuers should fail")
 }
