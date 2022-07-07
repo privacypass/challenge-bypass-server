@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/url"
 	"os"
@@ -187,7 +188,7 @@ func (c *Server) blindedTokenRedeemHandler(w http.ResponseWriter, r *http.Reques
 		}
 
 		if err := c.RedeemToken(verifiedIssuer, request.TokenPreimage, request.Payload); err != nil {
-			if err == errDuplicateRedemption {
+			if errors.Is(err, errDuplicateRedemption) {
 				return &handlers.AppError{
 					Message: err.Error(),
 					Code:    http.StatusConflict,

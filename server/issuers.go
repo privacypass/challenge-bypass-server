@@ -73,6 +73,7 @@ func (c *Server) GetIssuers(issuerType string) (*[]Issuer, error) {
 	}
 	return issuers, nil
 }
+
 func (c *Server) getIssuers(issuerType string) (*[]Issuer, *handlers.AppError) {
 	issuer, err := c.fetchIssuers(issuerType)
 	if err != nil {
@@ -91,7 +92,7 @@ func (c *Server) getIssuers(issuerType string) (*[]Issuer, *handlers.AppError) {
 	return issuer, nil
 }
 
-func (c *Server) issuerHandlerV1(w http.ResponseWriter, r *http.Request) *handlers.AppError {
+func (c *Server) issuerGetHandlerV1(w http.ResponseWriter, r *http.Request) *handlers.AppError {
 	defer closers.Panic(r.Body)
 
 	if issuerType := chi.URLParam(r, "type"); issuerType != "" {
@@ -213,7 +214,7 @@ func (c *Server) issuerV3CreateHandler(w http.ResponseWriter, r *http.Request) *
 	return nil
 }
 
-func (c *Server) issuerCreateHandler(w http.ResponseWriter, r *http.Request) *handlers.AppError {
+func (c *Server) issuerCreateHandlerV1(w http.ResponseWriter, r *http.Request) *handlers.AppError {
 	log := lg.Log(r.Context())
 
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxRequestSize))
@@ -256,8 +257,8 @@ func (c *Server) issuerRouterV1() chi.Router {
 	if os.Getenv("ENV") == "production" {
 		r.Use(middleware.SimpleTokenAuthorizedOnly)
 	}
-	r.Method("GET", "/{type}", middleware.InstrumentHandler("GetIssuer", handlers.AppHandler(c.issuerHandlerV1)))
-	r.Method("POST", "/", middleware.InstrumentHandler("CreateIssuer", handlers.AppHandler(c.issuerCreateHandler)))
+	r.Method("GET", "/{type}", middleware.InstrumentHandler("GetIssuer", handlers.AppHandler(c.issuerGetHandlerV1)))
+	r.Method("POST", "/", middleware.InstrumentHandler("CreateIssuer", handlers.AppHandler(c.issuerCreateHandlerV1)))
 	r.Method("GET", "/", middleware.InstrumentHandler("GetAllIssuers", handlers.AppHandler(c.issuerGetAllHandler)))
 	return r
 }
