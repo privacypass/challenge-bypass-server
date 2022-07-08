@@ -43,7 +43,6 @@ services:
       - cb
     ports: 
       - "8000:8000"
-
   challenge-bypass:
     container_name: challenge-bypass
     image: challenge-bypass-builder 

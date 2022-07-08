@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/brave-intl/challenge-bypass-server/utils/test"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -46,6 +47,9 @@ func (suite *ServerTestSuite) SetupSuite() {
 
 	suite.srv.InitDb()
 	suite.srv.InitDynamo()
+
+	err = test.SetupDynamodbTables(suite.srv.dynamo)
+	suite.Require().NoError(err)
 
 	suite.handler = chi.ServerBaseContext(suite.srv.setupRouter(SetupLogger(context.Background())))
 }
