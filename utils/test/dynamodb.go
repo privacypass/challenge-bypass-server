@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// SetupDynamodbTables this function is setups tables for use in dynamodb.
+// SetupDynamodbTables this function sets up tables for use in dynamodb tests.
 func SetupDynamodbTables(db *dynamodb.DynamoDB) error {
 
 	_, _ = db.DeleteTable(&dynamodb.DeleteTableInput{})
