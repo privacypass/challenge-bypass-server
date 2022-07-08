@@ -1,41 +1,41 @@
 run:
-  go: "1.18"
+  go: "1.17" ## TODO update to 1.18 once all linters support it
   timeout: 3m
 
-#linters-settings:
-#  cyclop:
-#    # The maximal code complexity to report.
-#    # Default: 10
-#    max-complexity: 30
-#    # The maximal average package complexity.
-#    # If it's higher than 0.0 (float) the check is enabled
-#    # Default: 0.0
-#    package-average: 10.0
+linters-settings:
+  cyclop:
+    # The maximal code complexity to report.
+    # Default: 10
+    max-complexity: 10
+    # The maximal average package complexity.
+    # If it's higher than 0.0 (float) the check is enabled
+    # Default: 0.0
+    package-average: 10.0
 
-#  errcheck:
-#    # Report about not checking of errors in type assertions: `a := b.(MyStruct)`.
-#    # Such cases aren't reported by default.
-#    # Default: false
-#    check-type-assertions: true
+  errcheck:
+    # Report about not checking of errors in type assertions: `a := b.(MyStruct)`.
+    # Such cases aren't reported by default.
+    # Default: false
+    check-type-assertions: true
 
-  #  gocritic:
-  #    # Settings passed to gocritic.
-  #    # The settings key is the name of a supported gocritic checker.
-  #    # The list of supported checkers can be find in https://go-critic.github.io/overview.
-  #    settings:
-  #      captLocal:
-  #        # Whether to restrict checker to params only.
-  #        # Default: true
-  #        paramsOnly: false
-  #      underef:
-  #        # Whether to skip (*x).method() calls where x is a pointer receiver.
-  #        # Default: true
-  #        skipRecvDeref: false
+    gocritic:
+      # Settings passed to gocritic.
+      # The settings key is the name of a supported gocritic checker.
+      # The list of supported checkers can be find in https://go-critic.github.io/overview.
+      settings:
+        captLocal:
+          # Whether to restrict checker to params only.
+          # Default: true
+          paramsOnly: false
+        underef:
+          # Whether to skip (*x).method() calls where x is a pointer receiver.
+          # Default: true
+          skipRecvDeref: false
 
-#  varcheck:
-#    # Check usage of exported fields and variables.
-#    # Default: false
-#    exported-fields: false # default false # TODO: enable after fixing false positives
+  varcheck:
+    # Check usage of exported fields and variables.
+    # Default: false
+    exported-fields: true
 
 linters:
   disable-all: true

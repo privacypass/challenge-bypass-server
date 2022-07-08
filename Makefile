@@ -15,9 +15,6 @@ docker-test:
 	--table-name redemptions --endpoint-url http://dynamodb:8000 --region us-west-2 \
 	&& go test ./..."
 
-docker-lint:
-	docker-compose -f docker-compose.yml -f docker-compose.dev.yml run --rm -p 2416:2416 challenge-bypass golangci-lint run
-
 docker:
 	docker build -t brave/challenge-bypass:$$(git rev-parse --short HEAD) .
 	docker tag brave/challenge-bypass:$$(git rev-parse --short HEAD) brave/challenge-bypass:latest
@@ -28,3 +25,6 @@ docker-release:
 
 generate-avro:
 	gogen-avro --package=generated ./avro/generated ./avro/schemas/*
+
+lint:
+	docker run --rm -v "$$(pwd):/app" --workdir /app golangci/golangci-lint:v1.46.2 go get ./... && golangci-lint run -v ./...
