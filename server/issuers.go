@@ -29,6 +29,17 @@ type issuerCreateRequest struct {
 	ExpiresAt *time.Time `json:"expires_at"`
 }
 
+type issuerV3CreateRequest struct {
+	Name      string     `json:"name"`
+	Cohort    int        `json:"cohort"`
+	MaxTokens int        `json:"max_tokens"`
+	ExpiresAt *time.Time `json:"expires_at"`
+	ValidFrom *time.Time `json:"valid_from"`
+	Duration  string     `json:"duration"` // iso 8601 duration string
+	Overlap   int        `json:"overlap"`  // how many extra buffer items to create
+	Buffer    int        `json:"buffer"`   // number of signing keys to have in buffer
+}
+
 type issuerFetchRequestV2 struct {
 	Cohort int `json:"cohort"`
 }
@@ -93,7 +104,7 @@ func (c *Server) issuerGetHandlerV1(w http.ResponseWriter, r *http.Request) *han
 		if !issuer.ExpiresAt.IsZero() {
 			expiresAt = issuer.ExpiresAt.Format(time.RFC3339)
 		}
-		err := json.NewEncoder(w).Encode(issuerResponse{issuer.ID, issuer.IssuerType, issuer.SigningKey.PublicKey(), expiresAt, issuer.IssuerCohort})
+		err := json.NewEncoder(w).Encode(issuerResponse{issuer.ID.String(), issuer.IssuerType, issuer.SigningKey.PublicKey(), expiresAt, issuer.IssuerCohort})
 		if err != nil {
 			c.Logger.Error("Error encoding the issuer response")
 			panic(err)
@@ -122,7 +133,7 @@ func (c *Server) issuerHandlerV2(w http.ResponseWriter, r *http.Request) *handle
 		if !issuer.ExpiresAt.IsZero() {
 			expiresAt = issuer.ExpiresAt.Format(time.RFC3339)
 		}
-		err := json.NewEncoder(w).Encode(issuerResponse{issuer.ID, issuer.IssuerType, issuer.SigningKey.PublicKey(), expiresAt, issuer.IssuerCohort})
+		err := json.NewEncoder(w).Encode(issuerResponse{issuer.ID.String(), issuer.IssuerType, issuer.SigningKey.PublicKey(), expiresAt, issuer.IssuerCohort})
 		if err != nil {
 			c.Logger.Error("Error encoding the issuer response")
 			panic(err)
@@ -149,7 +160,7 @@ func (c *Server) issuerGetAllHandler(w http.ResponseWriter, r *http.Request) *ha
 		if !issuer.ExpiresAt.IsZero() {
 			expiresAt = issuer.ExpiresAt.Format(time.RFC3339)
 		}
-		respIssuers = append(respIssuers, issuerResponse{issuer.ID, issuer.IssuerType, issuer.SigningKey.PublicKey(), expiresAt, issuer.IssuerCohort})
+		respIssuers = append(respIssuers, issuerResponse{issuer.ID.String(), issuer.IssuerType, issuer.SigningKey.PublicKey(), expiresAt, issuer.IssuerCohort})
 	}
 
 	err := json.NewEncoder(w).Encode(respIssuers)
@@ -157,6 +168,49 @@ func (c *Server) issuerGetAllHandler(w http.ResponseWriter, r *http.Request) *ha
 		c.Logger.Error("Error encoding issuer")
 		panic(err)
 	}
+	return nil
+}
+
+// issuerV3CreateHandler - creation of a time aware issuer
+func (c *Server) issuerV3CreateHandler(w http.ResponseWriter, r *http.Request) *handlers.AppError {
+	log := lg.Log(r.Context())
+
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxRequestSize))
+	var req issuerV3CreateRequest
+	if err := decoder.Decode(&req); err != nil {
+		c.Logger.Error("Could not parse the request body")
+		return handlers.WrapError(err, "Could not parse the request body", 400)
+	}
+
+	if req.ExpiresAt != nil {
+		if req.ExpiresAt.Before(time.Now()) {
+			c.Logger.Error("Expiration time has past")
+			return &handlers.AppError{
+				Message: "Expiration time has past",
+				Code:    400,
+			}
+		}
+	}
+
+	if err := c.createV3Issuer(Issuer{
+		IssuerType:   req.Name,
+		IssuerCohort: req.Cohort,
+		MaxTokens:    req.MaxTokens,
+		ExpiresAt:    *req.ExpiresAt,
+		Buffer:       req.Buffer,
+		Overlap:      req.Overlap,
+		ValidFrom:    req.ValidFrom,
+		Duration:     req.Duration,
+	}); err != nil {
+		log.Errorf("%s", err)
+		return &handlers.AppError{
+			Cause:   err,
+			Message: "Could not create new issuer",
+			Code:    500,
+		}
+	}
+
+	w.WriteHeader(http.StatusCreated)
 	return nil
 }
 
@@ -214,6 +268,16 @@ func (c *Server) issuerRouterV2() chi.Router {
 	if os.Getenv("ENV") == "production" {
 		r.Use(middleware.SimpleTokenAuthorizedOnly)
 	}
+	r.Method("GET", "/{type}", middleware.InstrumentHandler("GetIssuerV2", handlers.AppHandler(c.issuerHandlerV2)))
 	r.Method("GET", "/{type}", middleware.InstrumentHandler("GetIssuer", handlers.AppHandler(c.issuerHandlerV2)))
+	return r
+}
+
+func (c *Server) issuerRouterV3() chi.Router {
+	r := chi.NewRouter()
+	if os.Getenv("ENV") == "production" {
+		r.Use(middleware.SimpleTokenAuthorizedOnly)
+	}
+	r.Method("POST", "/", middleware.InstrumentHandler("CreateIssuerV3", handlers.AppHandler(c.issuerV3CreateHandler)))
 	return r
 }
