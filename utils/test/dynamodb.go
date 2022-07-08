@@ -4,15 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
+
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/brave-intl/challenge-bypass-server/utils/ptr"
-	"time"
 )
 
 // SetupDynamodbTables this function sets up tables for use in dynamodb tests.
 func SetupDynamodbTables(db *dynamodb.DynamoDB) error {
-
 	_, _ = db.DeleteTable(&dynamodb.DeleteTableInput{})
 
 	input := &dynamodb.CreateTableInput{
