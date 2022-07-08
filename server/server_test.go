@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/brave-intl/challenge-bypass-server/utils/test"
+
 	"github.com/brave-intl/bat-go/middleware"
 	crypto "github.com/brave-intl/challenge-bypass-ristretto-ffi"
 	"github.com/go-chi/chi"
@@ -46,6 +48,9 @@ func (suite *ServerTestSuite) SetupSuite() {
 
 	suite.srv.InitDb()
 	suite.srv.InitDynamo()
+
+	err = test.SetupDynamodbTables(suite.srv.dynamo)
+	suite.Require().NoError(err)
 
 	suite.handler = chi.ServerBaseContext(suite.srv.setupRouter(SetupLogger(context.Background())))
 }
