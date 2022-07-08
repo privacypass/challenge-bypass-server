@@ -9,6 +9,7 @@ import (
 	"github.com/brave-intl/bat-go/middleware"
 	"github.com/brave-intl/bat-go/utils/closers"
 	"github.com/brave-intl/bat-go/utils/handlers"
+	challengebypassristrettoffi "github.com/brave-intl/challenge-bypass-ristretto-ffi"
 	crypto "github.com/brave-intl/challenge-bypass-ristretto-ffi"
 	"github.com/go-chi/chi"
 	"github.com/pressly/lg"
@@ -104,7 +105,13 @@ func (c *Server) issuerGetHandlerV1(w http.ResponseWriter, r *http.Request) *han
 		if !issuer.ExpiresAt.IsZero() {
 			expiresAt = issuer.ExpiresAt.Format(time.RFC3339)
 		}
-		err := json.NewEncoder(w).Encode(issuerResponse{issuer.ID.String(), issuer.IssuerType, issuer.SigningKey.PublicKey(), expiresAt, issuer.IssuerCohort})
+
+		var publicKey *challengebypassristrettoffi.PublicKey
+		for _, k := range issuer.Keys {
+			publicKey = k.SigningKey.PublicKey()
+		}
+
+		err := json.NewEncoder(w).Encode(issuerResponse{issuer.ID.String(), issuer.IssuerType, publicKey, expiresAt, issuer.IssuerCohort})
 		if err != nil {
 			c.Logger.Error("Error encoding the issuer response")
 			panic(err)
@@ -133,7 +140,14 @@ func (c *Server) issuerHandlerV2(w http.ResponseWriter, r *http.Request) *handle
 		if !issuer.ExpiresAt.IsZero() {
 			expiresAt = issuer.ExpiresAt.Format(time.RFC3339)
 		}
-		err := json.NewEncoder(w).Encode(issuerResponse{issuer.ID.String(), issuer.IssuerType, issuer.SigningKey.PublicKey(), expiresAt, issuer.IssuerCohort})
+
+		// get the signing public key
+		var publicKey *challengebypassristrettoffi.PublicKey
+		for _, k := range issuer.Keys {
+			publicKey = k.SigningKey.PublicKey()
+		}
+
+		err := json.NewEncoder(w).Encode(issuerResponse{issuer.ID.String(), issuer.IssuerType, publicKey, expiresAt, issuer.IssuerCohort})
 		if err != nil {
 			c.Logger.Error("Error encoding the issuer response")
 			panic(err)
@@ -160,7 +174,13 @@ func (c *Server) issuerGetAllHandler(w http.ResponseWriter, r *http.Request) *ha
 		if !issuer.ExpiresAt.IsZero() {
 			expiresAt = issuer.ExpiresAt.Format(time.RFC3339)
 		}
-		respIssuers = append(respIssuers, issuerResponse{issuer.ID.String(), issuer.IssuerType, issuer.SigningKey.PublicKey(), expiresAt, issuer.IssuerCohort})
+
+		var publicKey *challengebypassristrettoffi.PublicKey
+		for _, k := range issuer.Keys {
+			publicKey = k.SigningKey.PublicKey()
+		}
+
+		respIssuers = append(respIssuers, issuerResponse{issuer.ID.String(), issuer.IssuerType, publicKey, expiresAt, issuer.IssuerCohort})
 	}
 
 	err := json.NewEncoder(w).Encode(respIssuers)

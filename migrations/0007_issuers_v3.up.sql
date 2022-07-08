@@ -8,8 +8,8 @@ CREATE TABLE v3_issuers(
     valid_from timestamp not null default now(),
     buffer integer not null default 1,
     days_out integer not null default 1,
-    overlap integer not null,
-    cohort_count integer not null,
+    overlap integer not null default 0,
+    issuer_cohort integer not null default 1,
     redemption_repository text not null default 'dynamodb',
     version integer default 3,
     max_tokens integer default 40,
@@ -33,7 +33,7 @@ CREATE index keys_public_key_idx on v3_issuer_keys(public_key);
 -- v1 migrations
 insert into v3_issuers (
     issuer_id, issuer_type, created_at, expires_at, last_rotated_at, valid_from,
-    buffer, days_out, overlap, cohort_count, redemption_repository, version, max_tokens)
+    buffer, days_out, overlap, issuer_cohort, redemption_repository, version, max_tokens)
 select
     id, issuer_type, created_at, expires_at, rotated_at, created_at,
     1, 30*3, 0, 1, 'postgres', version, max_tokens
@@ -43,7 +43,7 @@ where version = 1;
 -- v2 migrations
 insert into v3_issuers (
     issuer_id, issuer_type, created_at, expires_at, last_rotated_at, valid_from,
-    buffer, days_out, overlap, cohort_count, redemption_repository, version, max_tokens)
+    buffer, days_out, overlap, issuer_cohort, redemption_repository, version, max_tokens)
 select
     id, issuer_type, created_at, expires_at, rotated_at, created_at,
     1, 30, 7, 1, 'dynamodb', version, max_tokens
