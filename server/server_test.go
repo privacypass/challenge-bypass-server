@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/brave-intl/challenge-bypass-server/utils/test"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -14,6 +13,8 @@ import (
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/brave-intl/challenge-bypass-server/utils/test"
 
 	"github.com/brave-intl/bat-go/middleware"
 	crypto "github.com/brave-intl/challenge-bypass-ristretto-ffi"
