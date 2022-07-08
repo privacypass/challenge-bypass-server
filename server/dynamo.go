@@ -34,7 +34,7 @@ func (c *Server) InitDynamo() {
 }
 
 func (c *Server) fetchRedemptionV2(issuer *Issuer, ID string) (*RedemptionV2, error) {
-	issuerUUID, err := uuid.FromString(issuer.ID.String())
+	issuerUUID, err := uuid.FromString(issuer.ID)
 	if err != nil {
 		c.Logger.Error("Bad issuer id")
 		return nil, errors.New("Bad issuer id")
@@ -83,7 +83,7 @@ func (c *Server) redeemTokenV2(issuer *Issuer, preimage *crypto.TokenPreimage, p
 		return err
 	}
 
-	issuerUUID, err := uuid.FromString(issuer.ID.String())
+	issuerUUID, err := uuid.FromString(issuer.ID)
 	if err != nil {
 		c.Logger.Error("Bad issuer id")
 		return errors.New("Bad issuer id")
@@ -92,7 +92,7 @@ func (c *Server) redeemTokenV2(issuer *Issuer, preimage *crypto.TokenPreimage, p
 	id := uuid.NewV5(issuerUUID, string(preimageTxt))
 
 	redemption := RedemptionV2{
-		IssuerID:  issuer.ID.String(),
+		IssuerID:  issuer.ID,
 		ID:        id.String(),
 		PreImage:  string(preimageTxt),
 		Payload:   payload,
