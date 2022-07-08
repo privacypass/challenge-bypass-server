@@ -1,11 +1,11 @@
-name: challenge bypass tests
+name: tests
 on:
   pull_request:
     branches:
       - master
       - prod
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
     steps:
       - name: checkout repo
