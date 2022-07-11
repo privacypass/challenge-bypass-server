@@ -2,12 +2,11 @@ package server
 
 import (
 	"errors"
-	"fmt"
 	"os"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
+	"github.com/aws/aws-sdk-go/aws/awserr" // nolint
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
@@ -30,35 +29,6 @@ func (c *Server) InitDynamo() {
 	}
 
 	svc := dynamodb.New(sess, config)
-
-	fmt.Println("!!!!!!", os.Getenv("ENV"))
-	if os.Getenv("ENV") != "production" {
-		// create redemptions table
-		out, err := svc.CreateTable(&dynamodb.CreateTableInput{
-			AttributeDefinitions: []*dynamodb.AttributeDefinition{
-				{
-					AttributeName: aws.String("id"),
-					AttributeType: aws.String("S"),
-				},
-			},
-			KeySchema: []*dynamodb.KeySchemaElement{
-				{
-					AttributeName: aws.String("id"),
-					KeyType:       aws.String("HASH"),
-				},
-			},
-			ProvisionedThroughput: &dynamodb.ProvisionedThroughput{
-				ReadCapacityUnits:  aws.Int64(10),
-				WriteCapacityUnits: aws.Int64(10),
-			},
-			TableName: aws.String("redemptions"),
-		})
-		if err != nil {
-			c.Logger.Errorf("failed to setup dynamo: %s", err.Error())
-		}
-		fmt.Println("!!!!!!", out)
-	}
-
 	c.dynamo = svc
 }
 

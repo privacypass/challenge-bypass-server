@@ -5,18 +5,7 @@ docker-dev:
 	docker-compose -f docker-compose.yml -f docker-compose.dev.yml run --rm -p 2416:2416 challenge-bypass /bin/bash
 
 docker-test:
-	docker-compose -f docker-compose.yml -f docker-compose.dev.yml run --rm -p 2416:2416 challenge-bypass bash -c \
-	"aws dynamodb delete-table \
-	--table-name redemptions --endpoint-url http://dynamodb:8000 --region us-west-2  && \
-	aws dynamodb create-table \
-	--attribute-definitions AttributeName=id,AttributeType=S \
-	--key-schema AttributeName=id,KeyType=HASH \
-	--billing-mode PAY_PER_REQUEST \
-	--table-name redemptions --endpoint-url http://dynamodb:8000 --region us-west-2 \
-	&& go test ./..."
-
-docker-lint:
-	docker-compose -f docker-compose.yml -f docker-compose.dev.yml run --rm -p 2416:2416 challenge-bypass golangci-lint run
+	docker-compose -f docker-compose.yml -f docker-compose.dev.yml run --rm -p 2416:2416 challenge-bypass go test ./...
 
 docker:
 	docker build -t brave/challenge-bypass:$$(git rev-parse --short HEAD) .
@@ -28,3 +17,6 @@ docker-release:
 
 generate-avro:
 	gogen-avro --package=generated ./avro/generated ./avro/schemas/*
+
+lint:
+	docker run --rm -v "$$(pwd):/app" --workdir /app golangci/golangci-lint:v1.46.2 go get ./... && golangci-lint run -v ./...
