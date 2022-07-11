@@ -549,7 +549,7 @@ func (c *Server) rotateIssuers() error {
 			WHERE expires_at IS NOT NULL
 			AND rotated_at IS NULL
 			AND expires_at < NOW() + $1 * INTERVAL '1 day'
-			AND version < 3
+			AND version >= 2
 		FOR UPDATE SKIP LOCKED`, cfg.DefaultDaysBeforeExpiry,
 	)
 	if err != nil {
@@ -804,6 +804,22 @@ func txPopulateIssuerKeys(logger *logrus.Logger, tx *sqlx.Tx, issuer Issuer) err
 	return rows.Close()
 }
 
+func (c *Server) createIssuerV2(issuerType string, issuerCohort int, maxTokens int, expiresAt *time.Time) error {
+	defer incrementCounter(createIssuerCounter)
+	if maxTokens == 0 {
+		maxTokens = 40
+	}
+
+	// convert to a v3 issuer
+	return c.createV3Issuer(Issuer{
+		IssuerType:   issuerType,
+		IssuerCohort: issuerCohort,
+		Version:      2,
+		MaxTokens:    maxTokens,
+		ExpiresAt:    *expiresAt,
+	})
+}
+
 func (c *Server) createIssuer(issuerType string, issuerCohort int, maxTokens int, expiresAt *time.Time) error {
 	defer incrementCounter(createIssuerCounter)
 	if maxTokens == 0 {
@@ -828,8 +844,8 @@ func (c *Server) RedeemToken(issuerForRedemption *Issuer, preimage *crypto.Token
 	defer incrementCounter(redeemTokenCounter)
 	if issuerForRedemption.Version == 1 {
 		return redeemTokenWithDB(c.db, issuerForRedemption.IssuerType, preimage, payload)
-	} else if issuerForRedemption.Version == 2 {
-		return c.redeemTokenV2(issuerForRedemption, preimage, payload)
+	} else if issuerForRedemption.Version == 2 || issuerForRedemption.Version == 3 {
+		return c.redeemTokenWithDynamo(issuerForRedemption, preimage, payload)
 	}
 	return errors.New("Wrong Issuer Version")
 }

@@ -87,7 +87,13 @@ func (c *Server) BlindedTokenIssuerHandlerV2(w http.ResponseWriter, r *http.Requ
 			return appErr
 		}
 
-		signedTokens, proof, err := btd.ApproveTokens(request.BlindedTokens, issuer.SigningKey)
+		// get latest signing key from issuer
+		var signingKey *crypto.SigningKey
+		if len(issuer.Keys) > 0 {
+			signingKey = issuer.Keys[len(issuer.Keys)-1].SigningKey
+		}
+
+		signedTokens, proof, err := btd.ApproveTokens(request.BlindedTokens, signingKey)
 		if err != nil {
 			c.Logger.Error("Could not approve new tokens")
 			return &handlers.AppError{
@@ -96,7 +102,7 @@ func (c *Server) BlindedTokenIssuerHandlerV2(w http.ResponseWriter, r *http.Requ
 				Code:    http.StatusInternalServerError,
 			}
 		}
-		response = blindedTokenIssueResponse{proof, signedTokens, issuer.SigningKey.PublicKey()}
+		response = blindedTokenIssueResponse{proof, signedTokens, signingKey.PublicKey()}
 	}
 	return handlers.RenderContent(r.Context(), response, w, http.StatusOK)
 }
@@ -125,7 +131,13 @@ func (c *Server) blindedTokenIssuerHandler(w http.ResponseWriter, r *http.Reques
 			}
 		}
 
-		signedTokens, proof, err := btd.ApproveTokens(request.BlindedTokens, issuer.SigningKey)
+		// get latest signing key from issuer
+		var signingKey *crypto.SigningKey
+		if len(issuer.Keys) > 0 {
+			signingKey = issuer.Keys[len(issuer.Keys)-1].SigningKey
+		}
+
+		signedTokens, proof, err := btd.ApproveTokens(request.BlindedTokens, signingKey)
 		if err != nil {
 			c.Logger.Error("Could not approve new tokens")
 			return &handlers.AppError{
@@ -134,7 +146,7 @@ func (c *Server) blindedTokenIssuerHandler(w http.ResponseWriter, r *http.Reques
 				Code:    http.StatusInternalServerError,
 			}
 		}
-		response = blindedTokenIssueResponse{proof, signedTokens, issuer.SigningKey.PublicKey()}
+		response = blindedTokenIssueResponse{proof, signedTokens, signingKey.PublicKey()}
 	}
 	return handlers.RenderContent(r.Context(), response, w, http.StatusOK)
 }
@@ -169,7 +181,14 @@ func (c *Server) blindedTokenRedeemHandler(w http.ResponseWriter, r *http.Reques
 			if !issuer.ExpiresAt.IsZero() && issuer.ExpiresAt.Before(time.Now()) {
 				continue
 			}
-			if err := btd.VerifyTokenRedemption(request.TokenPreimage, request.Signature, request.Payload, []*crypto.SigningKey{issuer.SigningKey}); err != nil {
+
+			// get latest signing key from issuer
+			var signingKey *crypto.SigningKey
+			if len(issuer.Keys) > 0 {
+				signingKey = issuer.Keys[len(issuer.Keys)-1].SigningKey
+			}
+
+			if err := btd.VerifyTokenRedemption(request.TokenPreimage, request.Signature, request.Payload, []*crypto.SigningKey{signingKey}); err != nil {
 				verified = false
 			} else {
 				verified = true
@@ -199,11 +218,6 @@ func (c *Server) blindedTokenRedeemHandler(w http.ResponseWriter, r *http.Reques
 				Message: "Could not mark token redemption",
 				Code:    http.StatusInternalServerError,
 			}
-		}
-		err := json.NewEncoder(w).Encode(blindedTokenRedeemResponse{verifiedCohort})
-		if err != nil {
-			c.Logger.Error("Could not encode the blinded token")
-			panic(err)
 		}
 		response = blindedTokenRedeemResponse{verifiedCohort}
 	}
@@ -242,7 +256,14 @@ func (c *Server) blindedTokenBulkRedeemHandler(w http.ResponseWriter, r *http.Re
 				Code:    http.StatusBadRequest,
 			}
 		}
-		err := btd.VerifyTokenRedemption(token.TokenPreimage, token.Signature, request.Payload, []*crypto.SigningKey{issuer.SigningKey})
+
+		// get latest signing key from issuer
+		var signingKey *crypto.SigningKey
+		if len(issuer.Keys) > 0 {
+			signingKey = issuer.Keys[len(issuer.Keys)-1].SigningKey
+		}
+
+		err := btd.VerifyTokenRedemption(token.TokenPreimage, token.Signature, request.Payload, []*crypto.SigningKey{signingKey})
 		if err != nil {
 			c.Logger.Error(err.Error())
 			_ = tx.Rollback()

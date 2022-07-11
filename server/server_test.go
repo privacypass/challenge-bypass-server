@@ -33,7 +33,7 @@ func TestServerTestSuite(t *testing.T) {
 }
 
 func (suite *ServerTestSuite) SetupSuite() {
-	err := os.Setenv("ENV", "production")
+	err := os.Setenv("ENV", "localtest")
 	suite.Require().NoError(err)
 
 	suite.accessToken = uuid.NewV4().String()
@@ -44,10 +44,11 @@ func (suite *ServerTestSuite) SetupSuite() {
 	err = suite.srv.InitDbConfig()
 	suite.Require().NoError(err, "Failed to setup db conn")
 
+	suite.handler = chi.ServerBaseContext(suite.srv.setupRouter(SetupLogger(context.Background())))
+
 	suite.srv.InitDb()
 	suite.srv.InitDynamo()
 
-	suite.handler = chi.ServerBaseContext(suite.srv.setupRouter(SetupLogger(context.Background())))
 }
 
 func (suite *ServerTestSuite) SetupTest() {
@@ -141,6 +142,7 @@ func (suite *ServerTestSuite) TestIssueRedeemV2() {
 	preimageText, sigText = suite.prepareRedemption(unblindedToken, msg)
 	unblindedToken2 := suite.createToken(server.URL, issuerType, publicKey)
 	preimageText2, sigText2 := suite.prepareRedemption(unblindedToken2, msg)
+	// should create a new key in keys table
 	_ = suite.srv.rotateIssuers()
 	resp, _ = suite.attemptRedeem(server.URL, preimageText, sigText, issuerType, msg)
 	suite.Assert().NoError(err, "HTTP Request should complete")
@@ -152,17 +154,24 @@ func (suite *ServerTestSuite) TestIssueRedeemV2() {
 	err = json.Unmarshal(body, &issuerResp)
 	suite.Require().NoError(err, "Redemption response body unmarshal must succeed")
 	suite.Assert().NotEqual(issuerResp.Cohort, 1-issuerCohort, "Redemption of a token should return the same cohort with which it was signed")
-
-	_, _ = suite.srv.db.Query(`UPDATE v3_issuers SET expires_at=$1 WHERE id=$2`, time.Now().AddDate(0, 0, -1), issuer.ID)
-	issuers, _ := suite.srv.fetchIssuers(issuerType)
-	suite.Assert().Equal(len(*issuers), 2, "There should be two issuers of same type")
+	_, err = suite.srv.db.Query(`UPDATE v3_issuers SET expires_at=$1 WHERE issuer_id=$2`, time.Now().AddDate(0, 0, -1), issuer.ID)
+	suite.Require().NoError(err, "failed to expire issuer")
+	// keys are what rotate now, not the issuer itself
+	// issuers, _ := suite.srv.fetchIssuers(issuerType)
+	// suite.Assert().Equal(len(*issuers), 2, "There should be two issuers of same type")
 	issuer, _ = suite.srv.GetLatestIssuer(issuerType, issuerCohort)
 
 	resp, err = suite.attemptRedeem(server.URL, preimageText2, sigText2, issuerType, msg)
 	suite.Assert().NoError(err, "HTTP Request should complete")
 	suite.Assert().Equal(http.StatusBadRequest, resp.StatusCode, "Expired Issuers should fail")
 
-	publicKey = issuer.SigningKey.PublicKey()
+	// get public key from issuer keys
+	var signingKey = issuer.Keys[len(issuer.Keys)-1].SigningKey
+	publicKey = signingKey.PublicKey()
+
+	_, err = suite.srv.db.Query(`UPDATE v3_issuers SET expires_at=$1 WHERE issuer_id=$2`, time.Now().AddDate(0, 0, +1), issuer.ID)
+	suite.Require().NoError(err, "failed to unexpire issuer")
+
 	unblindedToken = suite.createToken(server.URL, issuerType, publicKey)
 	preimageText, sigText = suite.prepareRedemption(unblindedToken, msg)
 	resp, err = suite.attemptRedeem(server.URL, preimageText, sigText, issuerType, msg)
@@ -216,9 +225,12 @@ func (suite *ServerTestSuite) TestNewIssueRedeemV2() {
 	suite.Require().NoError(err, "Redemption response body unmarshal must succeed")
 	suite.Assert().NotEqual(issuerResp.Cohort, 1-issuerCohort, "Redemption of a token should return the same cohort with which it was signed")
 
-	_, _ = suite.srv.db.Query(`UPDATE v3_issuers SET expires_at=$1 WHERE id=$2`, time.Now().AddDate(0, 0, -1), issuer.ID)
-	issuers, _ := suite.srv.fetchIssuers(issuerType)
-	suite.Assert().Equal(len(*issuers), 2, "There should be two issuers of same type")
+	_, err = suite.srv.db.Query(`UPDATE v3_issuers SET expires_at=$1 WHERE issuer_id=$2`, time.Now().AddDate(0, 0, -1), issuer.ID)
+	suite.Require().NoError(err, "failed to expire issuer")
+
+	// no more duplicate issuers for rotations, the keys will be rotated
+	//issuers, _ := suite.srv.fetchIssuers(issuerType)
+	//suite.Assert().Equal(len(*issuers), 2, "There should be two issuers of same type")
 
 	resp, err = suite.attemptRedeem(server.URL, preimageText2, sigText2, issuerType, msg)
 	suite.Assert().NoError(err, "HTTP Request should complete")
@@ -293,7 +305,8 @@ func (suite *ServerTestSuite) getAllIssuers(serverURL string) []issuerResponse {
 
 func (suite *ServerTestSuite) createIssuerWithExpiration(serverURL string, issuerType string, issuerCohort int, expiresAt time.Time) *crypto.PublicKey {
 	payload := fmt.Sprintf(`{"name":"%s", "cohort": %d, "max_tokens":100, "expires_at":"%s"}`, issuerType, issuerCohort, expiresAt.Format("2006-01-02T15:04:05Z07:00"))
-	createIssuerURL := fmt.Sprintf("%s/v1/issuer/", serverURL)
+	// v2+ has expirations
+	createIssuerURL := fmt.Sprintf("%s/v2/issuer/", serverURL)
 	resp, err := suite.request("POST", createIssuerURL, bytes.NewBuffer([]byte(payload)))
 	suite.Require().NoError(err, "Issuer creation must succeed")
 	suite.Assert().Equal(http.StatusOK, resp.StatusCode)

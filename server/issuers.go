@@ -234,6 +234,49 @@ func (c *Server) issuerV3CreateHandler(w http.ResponseWriter, r *http.Request) *
 	return nil
 }
 
+func (c *Server) issuerCreateHandlerV2(w http.ResponseWriter, r *http.Request) *handlers.AppError {
+	log := lg.Log(r.Context())
+
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxRequestSize))
+	var req issuerCreateRequest
+	if err := decoder.Decode(&req); err != nil {
+		c.Logger.Error("Could not parse the request body")
+		return handlers.WrapError(err, "Could not parse the request body", 400)
+	}
+
+	if req.ExpiresAt != nil {
+		if req.ExpiresAt.Before(time.Now()) {
+			c.Logger.Error("Expiration time has past")
+			return &handlers.AppError{
+				Message: "Expiration time has past",
+				Code:    400,
+			}
+		}
+	}
+
+	// set the default cohort for v1 clients
+	if req.Cohort == 0 {
+		req.Cohort = v1Cohort
+	}
+
+	// set expires at if nil
+	if req.ExpiresAt == nil {
+		req.ExpiresAt = &time.Time{}
+	}
+
+	if err := c.createIssuerV2(req.Name, req.Cohort, req.MaxTokens, req.ExpiresAt); err != nil {
+		log.Errorf("%s", err)
+		return &handlers.AppError{
+			Cause:   err,
+			Message: "Could not create new issuer",
+			Code:    500,
+		}
+	}
+
+	w.WriteHeader(http.StatusOK)
+	return nil
+}
+
 func (c *Server) issuerCreateHandlerV1(w http.ResponseWriter, r *http.Request) *handlers.AppError {
 	log := lg.Log(r.Context())
 
@@ -257,6 +300,11 @@ func (c *Server) issuerCreateHandlerV1(w http.ResponseWriter, r *http.Request) *
 	// set the default cohort for v1 clients
 	if req.Cohort == 0 {
 		req.Cohort = v1Cohort
+	}
+
+	// set expires at if nil
+	if req.ExpiresAt == nil {
+		req.ExpiresAt = &time.Time{}
 	}
 
 	if err := c.createIssuer(req.Name, req.Cohort, req.MaxTokens, req.ExpiresAt); err != nil {
@@ -290,6 +338,7 @@ func (c *Server) issuerRouterV2() chi.Router {
 	}
 	r.Method("GET", "/{type}", middleware.InstrumentHandler("GetIssuerV2", handlers.AppHandler(c.issuerHandlerV2)))
 	r.Method("GET", "/{type}", middleware.InstrumentHandler("GetIssuer", handlers.AppHandler(c.issuerHandlerV2)))
+	r.Method("POST", "/", middleware.InstrumentHandler("CreateIssuer", handlers.AppHandler(c.issuerCreateHandlerV2)))
 	return r
 }
 
