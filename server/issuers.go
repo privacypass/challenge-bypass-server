@@ -9,7 +9,6 @@ import (
 	"github.com/brave-intl/bat-go/middleware"
 	"github.com/brave-intl/bat-go/utils/closers"
 	"github.com/brave-intl/bat-go/utils/handlers"
-	challengebypassristrettoffi "github.com/brave-intl/challenge-bypass-ristretto-ffi"
 	crypto "github.com/brave-intl/challenge-bypass-ristretto-ffi"
 	"github.com/go-chi/chi"
 	"github.com/pressly/lg"
@@ -106,7 +105,7 @@ func (c *Server) issuerGetHandlerV1(w http.ResponseWriter, r *http.Request) *han
 			expiresAt = issuer.ExpiresAt.Format(time.RFC3339)
 		}
 
-		var publicKey *challengebypassristrettoffi.PublicKey
+		var publicKey *crypto.PublicKey
 		for _, k := range issuer.Keys {
 			publicKey = k.SigningKey.PublicKey()
 		}
@@ -142,7 +141,7 @@ func (c *Server) issuerHandlerV2(w http.ResponseWriter, r *http.Request) *handle
 		}
 
 		// get the signing public key
-		var publicKey *challengebypassristrettoffi.PublicKey
+		var publicKey *crypto.PublicKey
 		for _, k := range issuer.Keys {
 			publicKey = k.SigningKey.PublicKey()
 		}
@@ -175,7 +174,7 @@ func (c *Server) issuerGetAllHandler(w http.ResponseWriter, r *http.Request) *ha
 			expiresAt = issuer.ExpiresAt.Format(time.RFC3339)
 		}
 
-		var publicKey *challengebypassristrettoffi.PublicKey
+		var publicKey *crypto.PublicKey
 		for _, k := range issuer.Keys {
 			publicKey = k.SigningKey.PublicKey()
 		}

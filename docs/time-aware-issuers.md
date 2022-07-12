@@ -76,7 +76,7 @@ key into the `time_aware_key` table, and start handling signing requests.
 
 This implementation of challenge bypass already handles signing requests from a kafka topic.  This service
 will ingest a batch (`buffer` + `overlap`) of blinded credentials in base64 standard encoding.  If
-`len(blinded_credentials)` % (`buffer`+`overlap`) != 0 the service shall return a 400 back to the caller.
+`len(blinded_credentials)` % (`buffer`+`overlap`) != 0 the service shall return an error back to the caller.
 
 Otherwise the service shall take (`len(blinded_credentials)`/(`buffer`+`overlap`)) of the blinded tokens
 and perform signing iteratively across all `buffer`+`overlap` keys in the `time_aware_keys` for the
