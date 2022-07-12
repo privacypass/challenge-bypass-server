@@ -151,6 +151,82 @@ func (c *Server) blindedTokenIssuerHandler(w http.ResponseWriter, r *http.Reques
 	return handlers.RenderContent(r.Context(), response, w, http.StatusOK)
 }
 
+func (c *Server) blindedTokenRedeemHandlerV3(w http.ResponseWriter, r *http.Request) *handlers.AppError {
+	var response blindedTokenRedeemResponse
+	if issuerType := chi.URLParam(r, "type"); issuerType != "" {
+		issuers, appErr := c.getIssuers(issuerType)
+		if appErr != nil {
+			return appErr
+		}
+
+		var request blindedTokenRedeemRequest
+
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxRequestSize)).Decode(&request); err != nil {
+			c.Logger.Error("Could not parse the request body")
+			return handlers.WrapError(err, "Could not parse the request body", 400)
+		}
+
+		if request.TokenPreimage == nil || request.Signature == nil {
+			c.Logger.Error("Empty request")
+			return &handlers.AppError{
+				Message: "Empty request",
+				Code:    http.StatusBadRequest,
+			}
+		}
+
+		var verified = false
+		var verifiedIssuer = &Issuer{}
+		var verifiedCohort = 0
+		for _, issuer := range *issuers {
+			if !issuer.ExpiresAt.IsZero() && issuer.ExpiresAt.Before(time.Now()) {
+				continue
+			}
+
+			// iterate through the keys until we have one that is valid
+			var signingKey *crypto.SigningKey
+			for _, k := range issuer.Keys {
+				if k.StartAt.Before(time.Now()) && k.EndAt.After(time.Now()) {
+					signingKey = k.SigningKey
+					break
+				}
+			}
+
+			if err := btd.VerifyTokenRedemption(request.TokenPreimage, request.Signature, request.Payload, []*crypto.SigningKey{signingKey}); err != nil {
+				verified = false
+			} else {
+				verified = true
+				verifiedIssuer = &issuer
+				verifiedCohort = issuer.IssuerCohort
+				break
+			}
+		}
+
+		if !verified {
+			c.Logger.Error("Could not verify that the token redemption is valid")
+			return &handlers.AppError{
+				Message: "Could not verify that token redemption is valid",
+				Code:    http.StatusBadRequest,
+			}
+		}
+
+		if err := c.RedeemToken(verifiedIssuer, request.TokenPreimage, request.Payload); err != nil {
+			if errors.Is(err, errDuplicateRedemption) {
+				return &handlers.AppError{
+					Message: err.Error(),
+					Code:    http.StatusConflict,
+				}
+			}
+			return &handlers.AppError{
+				Cause:   err,
+				Message: "Could not mark token redemption",
+				Code:    http.StatusInternalServerError,
+			}
+		}
+		response = blindedTokenRedeemResponse{verifiedCohort}
+	}
+	return handlers.RenderContent(r.Context(), response, w, http.StatusOK)
+}
+
 func (c *Server) blindedTokenRedeemHandler(w http.ResponseWriter, r *http.Request) *handlers.AppError {
 	var response blindedTokenRedeemResponse
 	if issuerType := chi.URLParam(r, "type"); issuerType != "" {
@@ -386,5 +462,16 @@ func (c *Server) tokenRouterV2() chi.Router {
 		r.Use(middleware.SimpleTokenAuthorizedOnly)
 	}
 	r.Method(http.MethodPost, "/{type}", middleware.InstrumentHandler("IssueTokens", handlers.AppHandler(c.BlindedTokenIssuerHandlerV2)))
+	return r
+}
+
+// New end point to generated marked tokens
+func (c *Server) tokenRouterV3() chi.Router {
+	r := chi.NewRouter()
+	if os.Getenv("ENV") == "production" {
+		r.Use(middleware.SimpleTokenAuthorizedOnly)
+	}
+	// for redeeming time aware issued tokens
+	r.Method(http.MethodPost, "/{type}/redemption/", middleware.InstrumentHandler("RedeemTokens", handlers.AppHandler(c.blindedTokenRedeemHandlerV3)))
 	return r
 }

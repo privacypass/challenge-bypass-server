@@ -152,6 +152,8 @@ func (c *Server) setupRouter(ctx context.Context, logger *logrus.Logger) (contex
 	r.Mount("/v2/issuer", c.issuerRouterV2())
 	r.Get("/metrics", middleware.Metrics())
 
+	// time aware token router
+	r.Mount("/v3/blindedToken", c.tokenRouterV3())
 	return ctx, r
 }
 
