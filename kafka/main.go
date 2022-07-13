@@ -18,8 +18,11 @@ import (
 
 var brokers []string
 
+// Processor is an interface that represents functions which can be used to process kafka
+// messages in our pipeline.
 type Processor func([]byte, *kafka.Writer, *server.Server, *zerolog.Logger) error
 
+// TopicMapping represents a kafka topic, how to process it, and where to emit the result.
 type TopicMapping struct {
 	Topic          string
 	ResultProducer *kafka.Writer
@@ -27,6 +30,7 @@ type TopicMapping struct {
 	Group          string
 }
 
+// StartConsumers reads configuration variables and starts the associated kafka consumers
 func StartConsumers(providedServer *server.Server, logger *zerolog.Logger) error {
 	adsRequestRedeemV1Topic := os.Getenv("REDEEM_CONSUMER_TOPIC")
 	adsResultRedeemV1Topic := os.Getenv("REDEEM_PRODUCER_TOPIC")
@@ -134,17 +138,17 @@ func StartConsumers(providedServer *server.Server, logger *zerolog.Logger) error
 	return nil
 }
 
-// NewConsumer returns a Kafka reader configured for the given topic and group.
-func newConsumer(topics []string, groupId string, logger *zerolog.Logger) *kafka.Reader {
+// newConsumer returns a Kafka reader configured for the given topic and group.
+func newConsumer(topics []string, groupID string, logger *zerolog.Logger) *kafka.Reader {
 	brokers = strings.Split(os.Getenv("KAFKA_BROKERS"), ",")
-	logger.Info().Msg(fmt.Sprintf("Subscribing to kafka topic %s on behalf of group %s using brokers %s", topics, groupId, brokers))
+	logger.Info().Msg(fmt.Sprintf("Subscribing to kafka topic %s on behalf of group %s using brokers %s", topics, groupID, brokers))
 	kafkaLogger := logrus.New()
 	kafkaLogger.SetLevel(logrus.WarnLevel)
 	reader := kafka.NewReader(kafka.ReaderConfig{
 		Brokers:        brokers,
 		Dialer:         getDialer(logger),
 		GroupTopics:    topics,
-		GroupID:        groupId,
+		GroupID:        groupID,
 		StartOffset:    kafka.FirstOffset,
 		Logger:         kafkaLogger,
 		MaxWait:        time.Second * 20, // default 10s

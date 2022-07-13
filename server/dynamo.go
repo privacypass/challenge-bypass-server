@@ -14,6 +14,7 @@ import (
 	uuid "github.com/satori/go.uuid"
 )
 
+// InitDynamo initialzes the dynamo database connection
 func (c *Server) InitDynamo() {
 	sess := session.Must(session.NewSessionWithOptions(session.Options{
 		SharedConfigState: session.SharedConfigEnable,
@@ -33,6 +34,7 @@ func (c *Server) InitDynamo() {
 	c.dynamo = svc
 }
 
+// fetchRedemptionV2 takes a UUID v5 which is used to fetch and return a RedemptionV2 record
 func (c *Server) fetchRedemptionV2(id uuid.UUID) (*RedemptionV2, error) {
 	tableName := "redemptions"
 	if os.Getenv("dynamodb_table") != "" {

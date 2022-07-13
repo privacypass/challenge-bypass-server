@@ -2,7 +2,6 @@ package kafka
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 
 	crypto "github.com/brave-intl/challenge-bypass-ristretto-ffi"
@@ -32,13 +31,13 @@ func SignedBlindedTokenIssuerHandler(
 	)
 	blindedTokenRequestSet, err := avroSchema.DeserializeSigningRequestSet(bytes.NewReader(data))
 	if err != nil {
-		return errors.New(fmt.Sprintf("Request %s: Failed Avro deserialization: %e", blindedTokenRequestSet.Request_id, err))
+		return fmt.Errorf("Request %s: Failed Avro deserialization: %e", blindedTokenRequestSet.Request_id, err)
 	}
 	var blindedTokenResults []avroSchema.SigningResult
 	if len(blindedTokenRequestSet.Data) > 1 {
 		// NOTE: When we start supporting multiple requests we will need to review
 		// errors and return values as well.
-		return errors.New(fmt.Sprintf("Request %s: Data array unexpectedly contained more than a single message. This array is intended to make future extension easier, but no more than a single value is currently expected.", blindedTokenRequestSet.Request_id))
+		return fmt.Errorf("Request %s: Data array unexpectedly contained more than a single message. This array is intended to make future extension easier, but no more than a single value is currently expected", blindedTokenRequestSet.Request_id)
 	}
 	for _, request := range blindedTokenRequestSet.Data {
 		if request.Blinded_tokens == nil {
@@ -89,24 +88,20 @@ func SignedBlindedTokenIssuerHandler(
 		}
 		marshaledDLEQProof, err := dleqProof.MarshalText()
 		if err != nil {
-			return errors.New(
-				fmt.Sprintf(
-					"Request %s: Could not marshal DLEQ proof: %e",
-					blindedTokenRequestSet.Request_id,
-					err,
-				),
+			return fmt.Errorf(
+				"Request %s: Could not marshal DLEQ proof: %e",
+				blindedTokenRequestSet.Request_id,
+				err,
 			)
 		}
 		var marshaledTokens []string
 		for _, token := range signedTokens {
 			marshaledToken, err := token.MarshalText()
 			if err != nil {
-				return errors.New(
-					fmt.Sprintf(
-						"Request %s: Could not marshal new tokens to bytes: %e",
-						blindedTokenRequestSet.Request_id,
-						err,
-					),
+				return fmt.Errorf(
+					"Request %s: Could not marshal new tokens to bytes: %e",
+					blindedTokenRequestSet.Request_id,
+					err,
 				)
 			}
 			marshaledTokens = append(marshaledTokens, string(marshaledToken[:]))
@@ -114,12 +109,10 @@ func SignedBlindedTokenIssuerHandler(
 		publicKey := issuer.SigningKey.PublicKey()
 		marshaledPublicKey, err := publicKey.MarshalText()
 		if err != nil {
-			return errors.New(
-				fmt.Sprintf(
-					"Request %s: Could not marshal signing key: %e",
-					blindedTokenRequestSet.Request_id,
-					err,
-				),
+			return fmt.Errorf(
+				"Request %s: Could not marshal signing key: %e",
+				blindedTokenRequestSet.Request_id,
+				err,
 			)
 		}
 		blindedTokenResults = append(blindedTokenResults, avroSchema.SigningResult{
@@ -137,11 +130,11 @@ func SignedBlindedTokenIssuerHandler(
 	var resultSetBuffer bytes.Buffer
 	err = resultSet.Serialize(&resultSetBuffer)
 	if err != nil {
-		return errors.New(fmt.Sprintf("Request %s: Failed to serialize ResultSet: %s", blindedTokenRequestSet.Request_id, resultSet))
+		return fmt.Errorf("Request %s: Failed to serialize ResultSet: %s", blindedTokenRequestSet.Request_id, resultSet)
 	}
 	err = Emit(producer, resultSetBuffer.Bytes(), logger)
 	if err != nil {
-		return errors.New(fmt.Sprintf("Request %s: Failed to emit results to topic %s: %e", blindedTokenRequestSet.Request_id, producer.Topic, err))
+		return fmt.Errorf("Request %s: Failed to emit results to topic %s: %e", blindedTokenRequestSet.Request_id, producer.Topic, err)
 	}
 	return nil
 }
