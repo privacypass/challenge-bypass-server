@@ -193,10 +193,7 @@ func (c *Server) blindedTokenRedeemHandler(w http.ResponseWriter, r *http.Reques
 			}
 		}
 
-		// HTTP requests will not have an offset, which was added to RedeemToken
-		// to manage the new Kafka flow and its associated uniqueness constraints.
-		// Setting to 0 until the HTTP flow is deprecated.
-		if err := c.RedeemToken(verifiedIssuer, request.TokenPreimage, request.Payload, 0); err != nil {
+		if err := c.RedeemToken(verifiedIssuer, request.TokenPreimage, request.Payload); err != nil {
 			if err == errDuplicateRedemption {
 				return &handlers.AppError{
 					Message: err.Error(),
