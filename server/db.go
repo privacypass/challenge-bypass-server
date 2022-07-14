@@ -75,7 +75,6 @@ type RedemptionV2 struct {
 	Timestamp time.Time `json:"timestamp"`
 	Payload   string    `json:"payload"`
 	TTL       int64     `json:"TTL"`
-	Offset    int64     `json:"offset"`
 }
 
 // CacheInterface cach functions
@@ -97,6 +96,7 @@ func (c *Server) LoadDbConfig(config DbConfig) {
 	c.dbConfig = config
 }
 
+// InitDb initialzes the database connection based on a server's configuration
 func (c *Server) InitDb() {
 	cfg := c.dbConfig
 
@@ -318,6 +318,8 @@ func (c *Server) fetchIssuers(issuerType string) (*[]Issuer, error) {
 	return &issuers, nil
 }
 
+// FetchAllIssuers fetches all issuers from a cache or a database, saving them in the cache
+// if it has to query the database.
 func (c *Server) FetchAllIssuers() (*[]Issuer, error) {
 	if c.caches != nil {
 		if cached, found := c.caches["issuers"].Get("all"); found {
@@ -475,16 +477,18 @@ func (c *Server) createIssuer(issuerType string, issuerCohort int, maxTokens int
 	return nil
 }
 
+// Queryable is an interface requiring the method Query
 type Queryable interface {
 	Query(query string, args ...interface{}) (*sql.Rows, error)
 }
 
-func (c *Server) RedeemToken(issuerForRedemption *Issuer, preimage *crypto.TokenPreimage, payload string, offset int64) error {
+// RedeemToken redeems a token given an issuer and and preimage
+func (c *Server) RedeemToken(issuerForRedemption *Issuer, preimage *crypto.TokenPreimage, payload string) error {
 	defer incrementCounter(redeemTokenCounter)
 	if issuerForRedemption.Version == 1 {
 		return redeemTokenWithDB(c.db, issuerForRedemption.IssuerType, preimage, payload)
 	} else if issuerForRedemption.Version == 2 {
-		return c.redeemTokenV2(issuerForRedemption, preimage, payload, offset)
+		return c.redeemTokenV2(issuerForRedemption, preimage, payload)
 	}
 	return errors.New("Wrong Issuer Version")
 }

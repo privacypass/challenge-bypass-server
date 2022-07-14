@@ -2,14 +2,17 @@ package utils
 
 import (
 	"fmt"
+	"time"
+
 	awsDynamoTypes "github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/rs/zerolog"
 	"github.com/segmentio/kafka-go"
-	"time"
 )
 
+// ProcessingError is an error used for Kafka processing that communicates retry data for
+// failures.
 type ProcessingError struct {
-	Cause          error
+	OriginalError  error
 	FailureMessage string
 	Temporary      bool
 	Backoff        time.Duration
@@ -19,12 +22,18 @@ type ProcessingError struct {
 // Error makes ProcessingError an error
 func (e ProcessingError) Error() string {
 	msg := fmt.Sprintf("error: %s", e.FailureMessage)
-	if e.Cause != nil {
-		msg = fmt.Sprintf("%s: %s", msg, e.Cause)
+	if e.OriginalError != nil {
+		msg = fmt.Sprintf("%s: %s", msg, e.OriginalError)
 	}
 	return msg
 }
 
+// Cause implements Cause for error
+func (e ProcessingError) Cause() error {
+	return e.OriginalError
+}
+
+// ProcessingErrorFromErrorWithMessage converts an error into a ProcessingError
 func ProcessingErrorFromErrorWithMessage(
 	err error,
 	message string,
@@ -33,7 +42,7 @@ func ProcessingErrorFromErrorWithMessage(
 ) *ProcessingError {
 	temporary, backoff := ErrorIsTemporary(err, logger)
 	return &ProcessingError{
-		Cause:          err,
+		OriginalError:  err,
 		FailureMessage: message,
 		Temporary:      temporary,
 		Backoff:        backoff,
@@ -41,6 +50,7 @@ func ProcessingErrorFromErrorWithMessage(
 	}
 }
 
+// ErrorIsTemporary takes an error and determines
 func ErrorIsTemporary(err error, logger *zerolog.Logger) (bool, time.Duration) {
 	var ok bool
 	err, ok = err.(*awsDynamoTypes.ProvisionedThroughputExceededException)
