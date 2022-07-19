@@ -9,15 +9,13 @@ import (
 	"github.com/brave-intl/challenge-bypass-server/btd"
 	cbpServer "github.com/brave-intl/challenge-bypass-server/server"
 	"github.com/rs/zerolog"
-	"github.com/segmentio/kafka-go"
+	kafka "github.com/segmentio/kafka-go"
 )
 
-/*
-SignedBlindedTokenIssuerHandler emits signed, blinded tokens based on provided blinded tokens.
-@TODO: It would be better for the Server implementation and the Kafka implementation of
-this behavior to share utility functions rather than passing an instance of the server
-as an argument here. That will require a bit of refactoring.
-*/
+// SignedBlindedTokenIssuerHandler emits signed, blinded tokens based on provided blinded tokens.
+// @TODO: It would be better for the Server implementation and the Kafka implementation of
+// this behavior to share utility functions rather than passing an instance of the server
+// as an argument here. That will require a bit of refactoring.
 func SignedBlindedTokenIssuerHandler(
 	data []byte,
 	producer *kafka.Writer,
@@ -25,23 +23,24 @@ func SignedBlindedTokenIssuerHandler(
 	logger *zerolog.Logger,
 ) error {
 	const (
-		OK             = 0
-		INVALID_ISSUER = 1
-		ERROR          = 2
+		issuerOk      = 0
+		issuerInvalid = 1
+		issuerError   = 2
 	)
 	blindedTokenRequestSet, err := avroSchema.DeserializeSigningRequestSet(bytes.NewReader(data))
 	if err != nil {
-		return fmt.Errorf("Request %s: Failed Avro deserialization: %e", blindedTokenRequestSet.Request_id, err)
+		return fmt.Errorf("request %s: failed avro deserialization: %w", blindedTokenRequestSet.Request_id, err)
 	}
 	var blindedTokenResults []avroSchema.SigningResult
 	if len(blindedTokenRequestSet.Data) > 1 {
 		// NOTE: When we start supporting multiple requests we will need to review
 		// errors and return values as well.
-		return fmt.Errorf("Request %s: Data array unexpectedly contained more than a single message. This array is intended to make future extension easier, but no more than a single value is currently expected", blindedTokenRequestSet.Request_id)
+		return fmt.Errorf("request %s: data array unexpectedly contained more than a single message. this array is intended to make future extension easier, but no more than a single value is currently expected",
+			blindedTokenRequestSet.Request_id)
 	}
 	for _, request := range blindedTokenRequestSet.Data {
 		if request.Blinded_tokens == nil {
-			logger.Error().Msg(fmt.Sprintf("Request %s: Empty request", blindedTokenRequestSet.Request_id))
+			logger.Error().Msgf("request %s: empty request", blindedTokenRequestSet.Request_id)
 			continue
 		}
 
@@ -50,7 +49,7 @@ func SignedBlindedTokenIssuerHandler(
 			blindedTokenResults = append(blindedTokenResults, avroSchema.SigningResult{
 				Signed_tokens:     nil,
 				Issuer_public_key: "",
-				Status:            INVALID_ISSUER,
+				Status:            issuerInvalid,
 				Associated_data:   request.Associated_data,
 			})
 			continue
@@ -63,11 +62,14 @@ func SignedBlindedTokenIssuerHandler(
 			blindedToken := crypto.BlindedToken{}
 			err := blindedToken.UnmarshalText([]byte(stringBlindedToken))
 			if err != nil {
-				logger.Error().Msg(fmt.Sprintf("Request %s: failed to unmarshal blinded tokens: %e", blindedTokenRequestSet.Request_id, err))
+				logger.Error().
+					Err(fmt.Errorf("request %s: failed to unmarshal blinded tokens: %w",
+						blindedTokenRequestSet.Request_id, err)).
+					Msg("signed blinded token issuer handler")
 				blindedTokenResults = append(blindedTokenResults, avroSchema.SigningResult{
 					Signed_tokens:     nil,
 					Issuer_public_key: "",
-					Status:            ERROR,
+					Status:            issuerError,
 					Associated_data:   request.Associated_data,
 				})
 				continue
@@ -77,49 +79,42 @@ func SignedBlindedTokenIssuerHandler(
 		// @TODO: If one token fails they will all fail. Assess this behavior
 		signedTokens, dleqProof, err := btd.ApproveTokens(blindedTokens, issuer.SigningKey)
 		if err != nil {
-			logger.Error().Msg(fmt.Sprintf("Request %s: Could not approve new tokens: %e", blindedTokenRequestSet.Request_id, err))
+			logger.Error().
+				Err(fmt.Errorf("request %s: could not approve new tokens: %w",
+					blindedTokenRequestSet.Request_id, err)).
+				Msg("signed blinded token issuer handler")
 			blindedTokenResults = append(blindedTokenResults, avroSchema.SigningResult{
 				Signed_tokens:     nil,
 				Issuer_public_key: "",
-				Status:            ERROR,
+				Status:            issuerError,
 				Associated_data:   request.Associated_data,
 			})
 			continue
 		}
 		marshaledDLEQProof, err := dleqProof.MarshalText()
 		if err != nil {
-			return fmt.Errorf(
-				"Request %s: Could not marshal DLEQ proof: %e",
-				blindedTokenRequestSet.Request_id,
-				err,
-			)
+			return fmt.Errorf("request %s: could not marshal dleq proof: %w", blindedTokenRequestSet.Request_id, err)
 		}
 		var marshaledTokens []string
 		for _, token := range signedTokens {
 			marshaledToken, err := token.MarshalText()
 			if err != nil {
-				return fmt.Errorf(
-					"Request %s: Could not marshal new tokens to bytes: %e",
-					blindedTokenRequestSet.Request_id,
-					err,
-				)
+				return fmt.Errorf("request %s: could not marshal new tokens to bytes: %w",
+					blindedTokenRequestSet.Request_id, err)
 			}
 			marshaledTokens = append(marshaledTokens, string(marshaledToken[:]))
 		}
 		publicKey := issuer.SigningKey.PublicKey()
 		marshaledPublicKey, err := publicKey.MarshalText()
 		if err != nil {
-			return fmt.Errorf(
-				"Request %s: Could not marshal signing key: %e",
-				blindedTokenRequestSet.Request_id,
-				err,
-			)
+			return fmt.Errorf("request %s: could not marshal signing key: %w",
+				blindedTokenRequestSet.Request_id, err)
 		}
 		blindedTokenResults = append(blindedTokenResults, avroSchema.SigningResult{
 			Signed_tokens:     marshaledTokens,
 			Proof:             string(marshaledDLEQProof),
 			Issuer_public_key: string(marshaledPublicKey),
-			Status:            OK,
+			Status:            issuerOk,
 			Associated_data:   request.Associated_data,
 		})
 	}
@@ -130,11 +125,13 @@ func SignedBlindedTokenIssuerHandler(
 	var resultSetBuffer bytes.Buffer
 	err = resultSet.Serialize(&resultSetBuffer)
 	if err != nil {
-		return fmt.Errorf("Request %s: Failed to serialize ResultSet: %s", blindedTokenRequestSet.Request_id, resultSet)
+		return fmt.Errorf("request %s: failed to serialize result set: %s: %w",
+			blindedTokenRequestSet.Request_id, resultSet, err)
 	}
 	err = Emit(producer, resultSetBuffer.Bytes(), logger)
 	if err != nil {
-		return fmt.Errorf("Request %s: Failed to emit results to topic %s: %e", blindedTokenRequestSet.Request_id, producer.Topic, err)
+		return fmt.Errorf("request %s: failed to emit results to topic %s: %w",
+			blindedTokenRequestSet.Request_id, producer.Topic, err)
 	}
 	return nil
 }
