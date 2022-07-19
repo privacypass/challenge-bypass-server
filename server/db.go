@@ -40,7 +40,7 @@ type DbConfig struct {
 type issuer struct {
 	ID                   *uuid.UUID  `db:"issuer_id"`
 	IssuerType           string      `db:"issuer_type"`
-	IssuerCohort         int         `db:"issuer_cohort"`
+	IssuerCohort         int16       `db:"issuer_cohort"`
 	SigningKey           []byte      `db:"signing_key"`
 	MaxTokens            int         `db:"max_tokens"`
 	CreatedAt            pq.NullTime `db:"created_at"`
@@ -60,7 +60,7 @@ type issuerKeys struct {
 	ID         *uuid.UUID `db:"key_id"`
 	SigningKey []byte     `db:"signing_key"`
 	PublicKey  string     `db:"public_key"`
-	Cohort     int        `db:"cohort"`
+	Cohort     int16      `db:"cohort"`
 	IssuerID   *uuid.UUID `db:"issuer_id"`
 	CreatedAt  *time.Time `db:"created_at"`
 	StartAt    *time.Time `db:"start_at"`
@@ -72,7 +72,7 @@ type IssuerKeys struct {
 	ID         *uuid.UUID         `json:"id"`
 	SigningKey *crypto.SigningKey `json:"-"`
 	PublicKey  string             `json:"public_key" db:"public_key"`
-	Cohort     int                `json:"cohort" db:"cohort"`
+	Cohort     int16              `json:"cohort" db:"cohort"`
 	IssuerID   *uuid.UUID         `json:"issuer_id" db:"issuer_id"`
 	CreatedAt  *time.Time         `json:"created_at" db:"created_at"`
 	StartAt    *time.Time         `json:"start_at" db:"start_at"`
@@ -84,7 +84,7 @@ type Issuer struct {
 	SigningKey   *crypto.SigningKey
 	ID           *uuid.UUID   `json:"id"`
 	IssuerType   string       `json:"issuer_type"`
-	IssuerCohort int          `json:"issuer_cohort"`
+	IssuerCohort int16        `json:"issuer_cohort"`
 	MaxTokens    int          `json:"max_tokens"`
 	CreatedAt    time.Time    `json:"created_at"`
 	ExpiresAt    time.Time    `json:"expires_at"`
@@ -311,8 +311,9 @@ func (c *Server) fetchIssuer(issuerID string) (*Issuer, error) {
 	return convertedIssuer, nil
 }
 
-func (c *Server) fetchIssuersByCohort(issuerType string, issuerCohort int) (*[]Issuer, error) {
-	compositeCacheKey := issuerType + strconv.Itoa(issuerCohort)
+func (c *Server) fetchIssuersByCohort(issuerType string, issuerCohort int16) (*[]Issuer, error) {
+	// will not lose resolution int16->int
+	compositeCacheKey := issuerType + strconv.Itoa(int(issuerCohort))
 	if c.caches != nil {
 		if cached, found := c.caches["issuercohort"].Get(compositeCacheKey); found {
 			return cached.(*[]Issuer), nil
@@ -804,7 +805,7 @@ func txPopulateIssuerKeys(logger *logrus.Logger, tx *sqlx.Tx, issuer Issuer) err
 	return rows.Close()
 }
 
-func (c *Server) createIssuerV2(issuerType string, issuerCohort int, maxTokens int, expiresAt *time.Time) error {
+func (c *Server) createIssuerV2(issuerType string, issuerCohort int16, maxTokens int, expiresAt *time.Time) error {
 	defer incrementCounter(createIssuerCounter)
 	if maxTokens == 0 {
 		maxTokens = 40
@@ -820,7 +821,7 @@ func (c *Server) createIssuerV2(issuerType string, issuerCohort int, maxTokens i
 	})
 }
 
-func (c *Server) createIssuer(issuerType string, issuerCohort int, maxTokens int, expiresAt *time.Time) error {
+func (c *Server) createIssuer(issuerType string, issuerCohort int16, maxTokens int, expiresAt *time.Time) error {
 	defer incrementCounter(createIssuerCounter)
 	if maxTokens == 0 {
 		maxTokens = 40

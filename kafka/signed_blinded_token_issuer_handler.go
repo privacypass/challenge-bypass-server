@@ -44,7 +44,7 @@ func SignedBlindedTokenIssuerHandler(
 			continue
 		}
 
-		issuer, appErr := server.GetLatestIssuer(request.Issuer_type, int(request.Issuer_cohort))
+		issuer, appErr := server.GetLatestIssuer(request.Issuer_type, int16(request.Issuer_cohort))
 		if appErr != nil {
 			blindedTokenResults = append(blindedTokenResults, avroSchema.SigningResult{
 				Signed_tokens:     nil,

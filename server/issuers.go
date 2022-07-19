@@ -19,19 +19,19 @@ type issuerResponse struct {
 	Name      string            `json:"name"`
 	PublicKey *crypto.PublicKey `json:"public_key"`
 	ExpiresAt string            `json:"expires_at,omitempty"`
-	Cohort    int               `json:"cohort"`
+	Cohort    int16             `json:"cohort"`
 }
 
 type issuerCreateRequest struct {
 	Name      string     `json:"name"`
-	Cohort    int        `json:"cohort"`
+	Cohort    int16      `json:"cohort"`
 	MaxTokens int        `json:"max_tokens"`
 	ExpiresAt *time.Time `json:"expires_at"`
 }
 
 type issuerV3CreateRequest struct {
 	Name      string     `json:"name"`
-	Cohort    int        `json:"cohort"`
+	Cohort    int16      `json:"cohort"`
 	MaxTokens int        `json:"max_tokens"`
 	ExpiresAt *time.Time `json:"expires_at"`
 	ValidFrom *time.Time `json:"valid_from"`
@@ -41,10 +41,10 @@ type issuerV3CreateRequest struct {
 }
 
 type issuerFetchRequestV2 struct {
-	Cohort int `json:"cohort"`
+	Cohort int16 `json:"cohort"`
 }
 
-func (c *Server) GetLatestIssuer(issuerType string, issuerCohort int) (*Issuer, *handlers.AppError) {
+func (c *Server) GetLatestIssuer(issuerType string, issuerCohort int16) (*Issuer, *handlers.AppError) {
 	issuer, err := c.fetchIssuersByCohort(issuerType, issuerCohort)
 	if err != nil {
 		if err == errIssuerCohortNotFound {
@@ -209,6 +209,9 @@ func (c *Server) issuerV3CreateHandler(w http.ResponseWriter, r *http.Request) *
 				Code:    400,
 			}
 		}
+	} else {
+		// default ExpiresAt
+		req.ExpiresAt = new(time.Time)
 	}
 
 	if err := c.createV3Issuer(Issuer{
@@ -336,7 +339,6 @@ func (c *Server) issuerRouterV2() chi.Router {
 		r.Use(middleware.SimpleTokenAuthorizedOnly)
 	}
 	r.Method("GET", "/{type}", middleware.InstrumentHandler("GetIssuerV2", handlers.AppHandler(c.issuerHandlerV2)))
-	r.Method("GET", "/{type}", middleware.InstrumentHandler("GetIssuer", handlers.AppHandler(c.issuerHandlerV2)))
 	r.Method("POST", "/", middleware.InstrumentHandler("CreateIssuer", handlers.AppHandler(c.issuerCreateHandlerV2)))
 	return r
 }
