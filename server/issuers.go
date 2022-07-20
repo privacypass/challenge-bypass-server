@@ -215,6 +215,7 @@ func (c *Server) issuerV3CreateHandler(w http.ResponseWriter, r *http.Request) *
 	}
 
 	if err := c.createV3Issuer(Issuer{
+		Version:      3,
 		IssuerType:   req.Name,
 		IssuerCohort: req.Cohort,
 		MaxTokens:    req.MaxTokens,

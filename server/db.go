@@ -548,7 +548,7 @@ func (c *Server) rotateIssuers() error {
 		&fetchedIssuers,
 		`SELECT * FROM v3_issuers
 			WHERE expires_at IS NOT NULL
-			AND rotated_at IS NULL
+			AND last_rotated_at IS NULL
 			AND expires_at < NOW() + $1 * INTERVAL '1 day'
 			AND version >= 2
 		FOR UPDATE SKIP LOCKED`, cfg.DefaultDaysBeforeExpiry,
@@ -571,7 +571,7 @@ func (c *Server) rotateIssuers() error {
 		}
 
 		if _, err = tx.Exec(
-			`UPDATE v3_issuers SET rotated_at = now() where issuer_id = $1`,
+			`UPDATE v3_issuers SET last_rotated_at = now() where issuer_id = $1`,
 			issuer.ID,
 		); err != nil {
 			return err

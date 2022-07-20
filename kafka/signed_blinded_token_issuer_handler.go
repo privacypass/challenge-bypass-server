@@ -3,6 +3,7 @@ package kafka
 import (
 	"bytes"
 	"fmt"
+	"math"
 
 	crypto "github.com/brave-intl/challenge-bypass-ristretto-ffi"
 	avroSchema "github.com/brave-intl/challenge-bypass-server/avro/generated"
@@ -41,6 +42,12 @@ func SignedBlindedTokenIssuerHandler(
 	for _, request := range blindedTokenRequestSet.Data {
 		if request.Blinded_tokens == nil {
 			logger.Error().Msgf("request %s: empty request", blindedTokenRequestSet.Request_id)
+			continue
+		}
+
+		// check to see if issuer cohort will overflow
+		if request.Issuer_cohort > math.MaxInt16 || request.Issuer_cohort < math.MinInt16 {
+			logger.Error().Msgf("request %s: invalid cohort", blindedTokenRequestSet.Request_id)
 			continue
 		}
 
