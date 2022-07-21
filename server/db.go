@@ -722,7 +722,8 @@ func txPopulateIssuerKeys(logger *logrus.Logger, tx *sqlx.Tx, issuer Issuer) err
 		issuer.Keys = []IssuerKeys{}
 	} else {
 		// if the issuer has keys already, start needs to be the last item in slice
-		start = issuer.Keys[len(issuer.Keys)-1].EndAt
+		tmp := *issuer.Keys[len(issuer.Keys)-1].EndAt
+		start = &tmp
 		i = len(issuer.Keys)
 	}
 
@@ -763,14 +764,24 @@ func txPopulateIssuerKeys(logger *logrus.Logger, tx *sqlx.Tx, issuer Issuer) err
 			return err
 		}
 
-		keys = append(keys, issuerKeys{
+		tmpStart := *start
+		tmpEnd := *end
+
+		var k = issuerKeys{
 			SigningKey: signingKeyTxt,
 			PublicKey:  string(pubKeyTxt),
 			Cohort:     issuer.IssuerCohort,
 			IssuerID:   issuer.ID,
-			StartAt:    start,
-			EndAt:      end,
-		})
+			StartAt:    &tmpStart,
+			EndAt:      &tmpEnd,
+		}
+
+		logger.Debugf("tmpStart: %+v", tmpStart)
+		logger.Debugf("tmpEnd: %+v", tmpEnd)
+		logger.Debugf("iteration: %d", i)
+		logger.Debugf("key for insertion: %+v", k)
+
+		keys = append(keys, k)
 
 		if issuer.ValidFrom != nil && !(*start).Equal(*issuer.ValidFrom) {
 			valueFmtStr += ", "
