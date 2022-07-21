@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -52,19 +53,21 @@ func ProcessingErrorFromErrorWithMessage(
 
 // ErrorIsTemporary takes an error and determines
 func ErrorIsTemporary(err error, logger *zerolog.Logger) (bool, time.Duration) {
-	var ok bool
-	err, ok = err.(*awsDynamoTypes.ProvisionedThroughputExceededException)
-	if ok {
+	var (
+		dynamoProvisionedThroughput *awsDynamoTypes.ProvisionedThroughputExceededException
+		dynamoRequestLimitExceeded  *awsDynamoTypes.RequestLimitExceeded
+		dynamoInternalServerError   *awsDynamoTypes.InternalServerError
+	)
+
+	if errors.As(err, &dynamoProvisionedThroughput) {
 		logger.Error().Err(err).Msg("Temporary message processing failure")
 		return true, 1 * time.Minute
 	}
-	err, ok = err.(*awsDynamoTypes.RequestLimitExceeded)
-	if ok {
+	if errors.As(err, &dynamoRequestLimitExceeded) {
 		logger.Error().Err(err).Msg("Temporary message processing failure")
 		return true, 1 * time.Minute
 	}
-	err, ok = err.(*awsDynamoTypes.InternalServerError)
-	if ok {
+	if errors.As(err, &dynamoInternalServerError) {
 		logger.Error().Err(err).Msg("Temporary message processing failure")
 		return true, 1 * time.Minute
 	}
