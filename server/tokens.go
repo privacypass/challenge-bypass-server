@@ -219,6 +219,12 @@ func (c *Server) blindedTokenRedeemHandlerV3(w http.ResponseWriter, r *http.Requ
 					break
 				}
 			}
+			if signingKey == nil {
+				return &handlers.AppError{
+					Message: "Issuer has no key that corresponds to start < now < end",
+					Code:    http.StatusBadRequest,
+				}
+			}
 
 			if err := btd.VerifyTokenRedemption(request.TokenPreimage, request.Signature, request.Payload, []*crypto.SigningKey{signingKey}); err != nil {
 				verified = false
