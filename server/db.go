@@ -724,7 +724,7 @@ func txPopulateIssuerKeys(logger *logrus.Logger, tx *sqlx.Tx, issuer Issuer) err
 	valueFmtStr := ""
 
 	var keys = []issuerKeys{}
-
+	var position = 0
 	// for i in buffer, create signing keys for each
 	for ; i < issuer.Buffer; i++ {
 		end := new(time.Time)
@@ -770,7 +770,16 @@ func txPopulateIssuerKeys(logger *logrus.Logger, tx *sqlx.Tx, issuer Issuer) err
 		if start != nil && !(*start).Equal(*issuer.ValidFrom) {
 			valueFmtStr += ", "
 		}
-		valueFmtStr += "($1, $2, $3, $4, $5, $6)"
+		valueFmtStr += fmt.Sprintf("($%d, $%d, $%d, $%d, $%d, $%d)",
+			position+1,
+			position+2,
+			position+3,
+			position+4,
+			position+5,
+			position+6)
+
+		// next set of position parameter start
+		position += 6
 
 		// increment start
 		if start != nil && end != nil {
