@@ -710,7 +710,8 @@ func txPopulateIssuerKeys(logger *logrus.Logger, tx *sqlx.Tx, issuer Issuer) err
 		issuer.Buffer = 1
 	}
 
-	start := issuer.ValidFrom
+	tmp := *issuer.ValidFrom
+	start := &tmp
 	i := 0
 	// time to create the keys associated with the issuer
 	if issuer.Keys == nil || len(issuer.Keys) == 0 {
