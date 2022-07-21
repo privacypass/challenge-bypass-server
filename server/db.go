@@ -776,11 +776,6 @@ func txPopulateIssuerKeys(logger *logrus.Logger, tx *sqlx.Tx, issuer Issuer) err
 			EndAt:      &tmpEnd,
 		}
 
-		logger.Debugf("tmpStart: %+v", tmpStart)
-		logger.Debugf("tmpEnd: %+v", tmpEnd)
-		logger.Debugf("iteration: %d", i)
-		logger.Debugf("key for insertion: %+v", k)
-
 		keys = append(keys, k)
 
 		if issuer.ValidFrom != nil && !(*start).Equal(*issuer.ValidFrom) {
