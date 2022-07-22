@@ -11,11 +11,11 @@ import (
 	"github.com/brave-intl/challenge-bypass-server/btd"
 	cbpServer "github.com/brave-intl/challenge-bypass-server/server"
 	"github.com/rs/zerolog"
-	"github.com/segmentio/kafka-go"
+	kafka "github.com/segmentio/kafka-go"
 )
 
-// SignedTokenRedeemHandler BlindedTokenRedeemHandler emits payment tokens that correspond
-// to the signed confirmation tokens provided.
+// SignedTokenRedeemHandler emits payment tokens that correspond to the signed confirmation
+// tokens provided.
 func SignedTokenRedeemHandler(
 	data []byte,
 	producer *kafka.Writer,
