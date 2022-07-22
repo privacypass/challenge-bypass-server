@@ -21,4 +21,4 @@ jobs:
         aws-region: us-west-2
         commit: ${{ github.sha }}
     - name: Challenge Bypass Server Deployments
-      uses: brave-intl/general-docker-build-pipeline-action@v1.0.4
+      uses: brave-intl/general-docker-build-pipeline-action@v1.0.9
