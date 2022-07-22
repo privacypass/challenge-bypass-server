@@ -3,7 +3,6 @@ package server
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"net/url"
 	"os"
@@ -14,7 +13,7 @@ import (
 	crypto "github.com/brave-intl/challenge-bypass-ristretto-ffi"
 	"github.com/brave-intl/challenge-bypass-server/btd"
 	"github.com/go-chi/chi"
-	uuid "github.com/satori/go.uuid"
+	"github.com/google/uuid"
 )
 
 const (
@@ -459,15 +458,7 @@ func (c *Server) blindedTokenRedemptionHandler(w http.ResponseWriter, r *http.Re
 		}
 
 		if issuer.Version == 2 {
-			issuerUUID, err := uuid.FromString(issuer.ID)
-			if err != nil {
-				c.Logger.Debug("Bad issuer id")
-				return &handlers.AppError{
-					Message: fmt.Sprintf("Bad issuer id: %s", err.Error()),
-					Code:    http.StatusBadRequest,
-				}
-			}
-			redemption, err := c.fetchRedemptionV2(uuid.NewV5(issuerUUID, tokenID))
+			redemption, err := c.fetchRedemptionV2(uuid.NewSHA1(*issuer.ID, []byte(tokenID)))
 			if err != nil {
 				if err == errRedemptionNotFound {
 					c.Logger.Debug("Redemption not found")

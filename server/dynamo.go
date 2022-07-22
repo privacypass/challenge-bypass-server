@@ -1,7 +1,6 @@
 package server
 
 import (
-	"errors"
 	"os"
 	"time"
 
@@ -11,7 +10,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 	crypto "github.com/brave-intl/challenge-bypass-ristretto-ffi"
-	uuid "github.com/satori/go.uuid"
+	"github.com/google/uuid"
 )
 
 // InitDynamo initialzes the dynamo database connection
@@ -75,13 +74,7 @@ func (c *Server) redeemTokenWithDynamo(issuer *Issuer, preimage *crypto.TokenPre
 		return err
 	}
 
-	issuerUUID, err := uuid.FromString(issuer.ID.String())
-	if err != nil {
-		c.Logger.Error("Bad issuer id")
-		return errors.New("Bad issuer id")
-	}
-
-	id := uuid.NewV5(issuerUUID, string(preimageTxt))
+	id := uuid.NewSHA1(*issuer.ID, string(preimageTxt))
 
 	redemption := RedemptionV2{
 		IssuerID:  issuer.ID.String(),
