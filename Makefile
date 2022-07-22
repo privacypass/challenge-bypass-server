@@ -16,7 +16,8 @@ docker-release:
 	docker push brave/challenge-bypass:latest
 
 generate-avro:
-	gogen-avro --package=generated ./avro/generated ./avro/schemas/*
+	gogen-avro --containers=true --package=generated ./avro/generated ./avro/schemas/*
+	echo "WARNING: The generated signing_result.go file has a property called Public_key which must be changed manually to Issuer_public_key in all instances. Its json representation must also be updated to be issuer_public_key. If this need is to be fixed it will require a schema update on the ads-serve side as well."
 
 lint:
 	docker run --rm -v "$$(pwd):/app" --workdir /app golangci/golangci-lint:v1.46.2 go get ./... && golangci-lint run -v ./...

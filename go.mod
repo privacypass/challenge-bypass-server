@@ -3,15 +3,18 @@ module github.com/brave-intl/challenge-bypass-server
 go 1.18
 
 require (
-	github.com/actgardner/gogen-avro/v9 v9.0.0
+	github.com/actgardner/gogen-avro/v10 v10.2.0
 	github.com/aws/aws-sdk-go v1.37.19
+	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.13.0
 	github.com/brave-intl/bat-go v0.5.1
 	github.com/brave-intl/challenge-bypass-ristretto-ffi v0.0.0-20190717223301-f88d942ddfaf
 	github.com/getsentry/raven-go v0.2.0
 	github.com/go-chi/chi v4.1.2+incompatible
 	github.com/go-chi/httplog v0.2.1
 	github.com/golang-migrate/migrate/v4 v4.14.1
+	github.com/golang/snappy v0.0.4 // indirect
 	github.com/google/uuid v1.3.0
+	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/jmoiron/sqlx v1.3.4
 	github.com/lib/pq v1.10.3
 	github.com/patrickmn/go-cache v2.1.0+incompatible
@@ -28,6 +31,7 @@ require (
 require (
 	github.com/Microsoft/go-winio v0.5.1 // indirect
 	github.com/asaskevich/govalidator v0.0.0-20200108200545-475eaeb16496 // indirect
+	github.com/aws/smithy-go v1.10.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/certifi/gocertifi v0.0.0-20210507211836-431795d63e8d // indirect
 	github.com/cespare/xxhash/v2 v2.1.2 // indirect
@@ -37,13 +41,10 @@ require (
 	github.com/getsentry/sentry-go v0.11.0 // indirect
 	github.com/go-chi/chi/v5 v5.0.0 // indirect
 	github.com/golang/protobuf v1.5.2 // indirect
-	github.com/golang/snappy v0.0.4 // indirect
 	github.com/gomodule/redigo v2.0.0+incompatible // indirect
-	github.com/google/go-cmp v0.5.6 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/hashicorp/golang-lru v0.5.4 // indirect
-	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/klauspost/compress v1.11.13 // indirect
 	github.com/linkedin/goavro v2.1.0+incompatible // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.2-0.20181231171920-c182affec369 // indirect

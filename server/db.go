@@ -134,6 +134,7 @@ func (c *Server) LoadDbConfig(config DbConfig) {
 	c.dbConfig = config
 }
 
+// InitDb initialzes the database connection based on a server's configuration
 func (c *Server) InitDb() {
 	cfg := c.dbConfig
 
@@ -465,7 +466,15 @@ func (c *Server) fetchIssuers(issuerType string) (*[]Issuer, error) {
 	return &issuers, nil
 }
 
+// FetchAllIssuers fetches all issuers from a cache or a database, saving them in the cache
+// if it has to query the database.
 func (c *Server) FetchAllIssuers() (*[]Issuer, error) {
+	if c.caches != nil {
+		if cached, found := c.caches["issuers"].Get("all"); found {
+			return cached.(*[]Issuer), nil
+		}
+	}
+
 	tx := c.db.MustBegin()
 	var err error = nil
 
@@ -476,6 +485,7 @@ func (c *Server) FetchAllIssuers() (*[]Issuer, error) {
 		}
 		err = tx.Commit()
 	}()
+
 	fetchedIssuers := []issuer{}
 	err = tx.Select(
 		&fetchedIssuers,
@@ -522,6 +532,10 @@ func (c *Server) FetchAllIssuers() (*[]Issuer, error) {
 		}
 
 		issuers = append(issuers, *convertedIssuer)
+	}
+
+	if c.caches != nil {
+		c.caches["issuers"].SetDefault("all", issuers)
 	}
 
 	return &issuers, nil
@@ -858,10 +872,12 @@ func (c *Server) createIssuer(issuerType string, issuerCohort int16, maxTokens i
 	})
 }
 
+// Queryable is an interface requiring the method Query
 type Queryable interface {
 	Query(query string, args ...interface{}) (*sql.Rows, error)
 }
 
+// RedeemToken redeems a token given an issuer and and preimage
 func (c *Server) RedeemToken(issuerForRedemption *Issuer, preimage *crypto.TokenPreimage, payload string) error {
 	defer incrementCounter(redeemTokenCounter)
 	if issuerForRedemption.Version == 1 {

@@ -10,7 +10,7 @@ import (
 	"github.com/brave-intl/challenge-bypass-server/btd"
 	cbpServer "github.com/brave-intl/challenge-bypass-server/server"
 	"github.com/rs/zerolog"
-	"github.com/segmentio/kafka-go"
+	kafka "github.com/segmentio/kafka-go"
 )
 
 // SignedBlindedTokenIssuerHandler emits signed, blinded tokens based on provided blinded tokens.

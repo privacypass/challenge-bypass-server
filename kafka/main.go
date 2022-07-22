@@ -2,7 +2,6 @@ package kafka
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"strconv"
 	"strings"
@@ -18,8 +17,11 @@ import (
 
 var brokers []string
 
+// Processor is an interface that represents functions which can be used to process kafka
+// messages in our pipeline.
 type Processor func([]byte, *kafka.Writer, *server.Server, *zerolog.Logger) error
 
+// TopicMapping represents a kafka topic, how to process it, and where to emit the result.
 type TopicMapping struct {
 	Topic          string
 	ResultProducer *kafka.Writer
@@ -27,6 +29,7 @@ type TopicMapping struct {
 	Group          string
 }
 
+// StartConsumers reads configuration variables and starts the associated kafka consumers
 func StartConsumers(providedServer *server.Server, logger *zerolog.Logger) error {
 	adsRequestRedeemV1Topic := os.Getenv("REDEEM_CONSUMER_TOPIC")
 	adsResultRedeemV1Topic := os.Getenv("REDEEM_PRODUCER_TOPIC")
@@ -69,7 +72,7 @@ func StartConsumers(providedServer *server.Server, logger *zerolog.Logger) error
 		consumerCount = 1
 	}
 
-	logger.Trace().Msg(fmt.Sprintf("Spawning %d consumer goroutines", consumerCount))
+	logger.Trace().Msgf("Spawning %d consumer goroutines", consumerCount)
 
 	for i := 1; i <= consumerCount; i++ {
 		go func(topicMappings []TopicMapping) {
@@ -82,7 +85,7 @@ func StartConsumers(providedServer *server.Server, logger *zerolog.Logger) error
 			for {
 				// `FetchMessage` blocks until the next event. Do not block main.
 				ctx := context.Background()
-				logger.Trace().Msg(fmt.Sprintf("Fetching messages from Kafka"))
+				logger.Trace().Msgf("Fetching messages from Kafka")
 				msg, err := consumer.FetchMessage(ctx)
 				if err != nil {
 					logger.Error().Err(err).Msg("")
@@ -92,8 +95,8 @@ func StartConsumers(providedServer *server.Server, logger *zerolog.Logger) error
 					failureCount++
 					continue
 				}
-				logger.Info().Msg(fmt.Sprintf("Processing message for topic %s at offset %d", msg.Topic, msg.Offset))
-				logger.Info().Msg(fmt.Sprintf("Reader Stats: %#v", consumer.Stats()))
+				logger.Info().Msgf("Processing message for topic %s at offset %d", msg.Topic, msg.Offset)
+				logger.Info().Msgf("Reader Stats: %#v", consumer.Stats())
 				for _, topicMapping := range topicMappings {
 					if msg.Topic == topicMapping.Topic {
 						go func(
@@ -114,7 +117,7 @@ func StartConsumers(providedServer *server.Server, logger *zerolog.Logger) error
 						}(msg, topicMapping, providedServer, logger)
 
 						if err := consumer.CommitMessages(ctx, msg); err != nil {
-							logger.Error().Msg(fmt.Sprintf("Failed to commit: %s", err))
+							logger.Error().Msgf("Failed to commit: %s", err)
 						}
 					}
 				}
@@ -135,17 +138,17 @@ func StartConsumers(providedServer *server.Server, logger *zerolog.Logger) error
 	return nil
 }
 
-// NewConsumer returns a Kafka reader configured for the given topic and group.
-func newConsumer(topics []string, groupId string, logger *zerolog.Logger) *kafka.Reader {
+// newConsumer returns a Kafka reader configured for the given topic and group.
+func newConsumer(topics []string, groupID string, logger *zerolog.Logger) *kafka.Reader {
 	brokers = strings.Split(os.Getenv("KAFKA_BROKERS"), ",")
-	logger.Info().Msg(fmt.Sprintf("Subscribing to kafka topic %s on behalf of group %s using brokers %s", topics, groupId, brokers))
+	logger.Info().Msgf("Subscribing to kafka topic %s on behalf of group %s using brokers %s", topics, groupID, brokers)
 	kafkaLogger := logrus.New()
 	kafkaLogger.SetLevel(logrus.WarnLevel)
 	reader := kafka.NewReader(kafka.ReaderConfig{
 		Brokers:        brokers,
 		Dialer:         getDialer(logger),
 		GroupTopics:    topics,
-		GroupID:        groupId,
+		GroupID:        groupID,
 		StartOffset:    kafka.FirstOffset,
 		Logger:         kafkaLogger,
 		MaxWait:        time.Second * 20, // default 10s
@@ -153,18 +156,18 @@ func newConsumer(topics []string, groupId string, logger *zerolog.Logger) *kafka
 		MinBytes:       1e3,              // 1KB
 		MaxBytes:       10e6,             // 10MB
 	})
-	logger.Trace().Msg(fmt.Sprintf("Reader create with subscription"))
+	logger.Trace().Msgf("Reader create with subscription")
 	return reader
 }
 
 // Emit sends a message over the Kafka interface.
 func Emit(producer *kafka.Writer, message []byte, logger *zerolog.Logger) error {
-	logger.Info().Msg(fmt.Sprintf("Beginning data emission for topic %s", producer.Topic))
+	logger.Info().Msgf("Beginning data emission for topic %s", producer.Topic)
 
 	messageKey := uuid.New()
 	marshaledMessageKey, err := messageKey.MarshalBinary()
 	if err != nil {
-		logger.Error().Msg(fmt.Sprintf("Failed to marshal UUID into binary. Using default key value. %e", err))
+		logger.Error().Msgf("Failed to marshal UUID into binary. Using default key value. %e", err)
 		marshaledMessageKey = []byte("default")
 	}
 
@@ -176,7 +179,7 @@ func Emit(producer *kafka.Writer, message []byte, logger *zerolog.Logger) error 
 		},
 	)
 	if err != nil {
-		logger.Error().Msg(fmt.Sprintf("Failed to write messages: %e", err))
+		logger.Error().Msgf("Failed to write messages: %e", err)
 		return err
 	}
 
@@ -191,7 +194,7 @@ func getDialer(logger *zerolog.Logger) *kafka.Dialer {
 		tlsDialer, _, err := batgo_kafka.TLSDialer()
 		dialer = tlsDialer
 		if err != nil {
-			logger.Error().Msg(fmt.Sprintf("Failed to initialize TLS dialer: %e", err))
+			logger.Error().Msgf("Failed to initialize TLS dialer: %e", err)
 		}
 	}
 	return dialer

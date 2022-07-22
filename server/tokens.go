@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"os"
@@ -13,6 +14,7 @@ import (
 	crypto "github.com/brave-intl/challenge-bypass-ristretto-ffi"
 	"github.com/brave-intl/challenge-bypass-server/btd"
 	"github.com/go-chi/chi"
+	uuid "github.com/satori/go.uuid"
 )
 
 const (
@@ -67,7 +69,7 @@ func (c *Server) BlindedTokenIssuerHandlerV2(w http.ResponseWriter, r *http.Requ
 		}
 
 		if request.BlindedTokens == nil {
-			c.Logger.Error("Empty request")
+			c.Logger.Debug("Empty request")
 			return &handlers.AppError{
 				Message: "Empty request",
 				Code:    http.StatusBadRequest,
@@ -75,7 +77,7 @@ func (c *Server) BlindedTokenIssuerHandlerV2(w http.ResponseWriter, r *http.Requ
 		}
 
 		if request.IssuerCohort != 0 && request.IssuerCohort != 1 {
-			c.Logger.Error("Not supported Cohort")
+			c.Logger.Debug("Not supported Cohort")
 			return &handlers.AppError{
 				Message: "Not supported Cohort",
 				Code:    http.StatusBadRequest,
@@ -102,7 +104,7 @@ func (c *Server) BlindedTokenIssuerHandlerV2(w http.ResponseWriter, r *http.Requ
 
 		signedTokens, proof, err := btd.ApproveTokens(request.BlindedTokens, signingKey)
 		if err != nil {
-			c.Logger.Error("Could not approve new tokens")
+			c.Logger.Debug("Could not approve new tokens")
 			return &handlers.AppError{
 				Cause:   err,
 				Message: "Could not approve new tokens",
@@ -131,7 +133,7 @@ func (c *Server) blindedTokenIssuerHandler(w http.ResponseWriter, r *http.Reques
 		}
 
 		if request.BlindedTokens == nil {
-			c.Logger.Error("Empty request")
+			c.Logger.Debug("Empty request")
 			return &handlers.AppError{
 				Message: "Empty request",
 				Code:    http.StatusBadRequest,
@@ -153,7 +155,7 @@ func (c *Server) blindedTokenIssuerHandler(w http.ResponseWriter, r *http.Reques
 
 		signedTokens, proof, err := btd.ApproveTokens(request.BlindedTokens, signingKey)
 		if err != nil {
-			c.Logger.Error("Could not approve new tokens")
+			c.Logger.Debug("Could not approve new tokens")
 			return &handlers.AppError{
 				Cause:   err,
 				Message: "Could not approve new tokens",
@@ -181,7 +183,7 @@ func (c *Server) blindedTokenRedeemHandlerV3(w http.ResponseWriter, r *http.Requ
 		}
 
 		if request.TokenPreimage == nil || request.Signature == nil {
-			c.Logger.Error("Empty request")
+			c.Logger.Debug("Empty request")
 			return &handlers.AppError{
 				Message: "Empty request",
 				Code:    http.StatusBadRequest,
@@ -237,7 +239,7 @@ func (c *Server) blindedTokenRedeemHandlerV3(w http.ResponseWriter, r *http.Requ
 		}
 
 		if !verified {
-			c.Logger.Error("Could not verify that the token redemption is valid")
+			c.Logger.Debug("Could not verify that the token redemption is valid")
 			return &handlers.AppError{
 				Message: "Could not verify that token redemption is valid",
 				Code:    http.StatusBadRequest,
@@ -256,6 +258,7 @@ func (c *Server) blindedTokenRedeemHandlerV3(w http.ResponseWriter, r *http.Requ
 				Message: "Could not mark token redemption",
 				Code:    http.StatusInternalServerError,
 			}
+
 		}
 		response = blindedTokenRedeemResponse{verifiedCohort}
 	}
@@ -439,7 +442,7 @@ func (c *Server) blindedTokenRedemptionHandler(w http.ResponseWriter, r *http.Re
 
 		tokenID, err := url.PathUnescape(tokenID)
 		if err != nil {
-			c.Logger.Error("Bad request - incorrect token ID")
+			c.Logger.Debug("Bad request - incorrect token ID")
 			return &handlers.AppError{
 				Message: err.Error(),
 				Code:    http.StatusBadRequest,
@@ -448,7 +451,7 @@ func (c *Server) blindedTokenRedemptionHandler(w http.ResponseWriter, r *http.Re
 
 		issuer, err := c.fetchIssuer(issuerID)
 		if err != nil {
-			c.Logger.Error("Bad request - incorrect issuer ID")
+			c.Logger.Debug("Bad request - incorrect issuer ID")
 			return &handlers.AppError{
 				Message: err.Error(),
 				Code:    http.StatusBadRequest,
@@ -456,9 +459,18 @@ func (c *Server) blindedTokenRedemptionHandler(w http.ResponseWriter, r *http.Re
 		}
 
 		if issuer.Version == 2 {
-			redemption, err := c.fetchRedemptionV2(issuer, tokenID)
+			issuerUUID, err := uuid.FromString(issuer.ID)
+			if err != nil {
+				c.Logger.Debug("Bad issuer id")
+				return &handlers.AppError{
+					Message: fmt.Sprintf("Bad issuer id: %s", err.Error()),
+					Code:    http.StatusBadRequest,
+				}
+			}
+			redemption, err := c.fetchRedemptionV2(uuid.NewV5(issuerUUID, tokenID))
 			if err != nil {
 				if err == errRedemptionNotFound {
+					c.Logger.Debug("Redemption not found")
 					return &handlers.AppError{
 						Message: err.Error(),
 						Code:    http.StatusBadRequest,
