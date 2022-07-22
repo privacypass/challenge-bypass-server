@@ -1,5 +1,7 @@
 package ptr
 
+import "time"
+
 // FromString returns pointer to string
 func FromString(s string) *string {
 	return &s
@@ -16,4 +18,8 @@ func StringOr(s *string, or string) string {
 		return or
 	}
 	return *s
+}
+
+func FromTime(t time.Time) *time.Time {
+	return &t
 }

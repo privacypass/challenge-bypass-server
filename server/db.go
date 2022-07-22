@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"github.com/brave-intl/challenge-bypass-server/utils/ptr"
 	"strconv"
 	"time"
 
@@ -664,6 +665,11 @@ func (c *Server) createV3Issuer(issuer Issuer) error {
 		issuer.MaxTokens = 40
 	}
 
+	validFrom := issuer.ValidFrom
+	if issuer.ValidFrom == nil {
+		validFrom = ptr.FromTime(time.Now())
+	}
+
 	tx := c.db.MustBegin()
 
 	queryTimer := prometheus.NewTimer(createTimeLimitedIssuerDBDuration)
@@ -691,7 +697,7 @@ func (c *Server) createV3Issuer(issuer Issuer) error {
 		issuer.Buffer,
 		issuer.Duration,
 		issuer.Overlap,
-		issuer.ValidFrom,
+		validFrom,
 	)
 	// get the newly inserted issuer identifier
 	if err := row.Scan(&issuer.ID); err != nil {
