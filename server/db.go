@@ -677,9 +677,11 @@ func (c *Server) createV3Issuer(issuer Issuer) error {
 				version,
 				expires_at,
 				buffer,
-				duration)
+				duration,
+			 	overlap,
+			 	valid_from)
 		VALUES
-		($1, $2, $3, $4, $5, $6, $7)
+		($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		RETURNING issuer_id`,
 		issuer.IssuerType,
 		issuer.IssuerCohort,
@@ -688,8 +690,9 @@ func (c *Server) createV3Issuer(issuer Issuer) error {
 		issuer.ExpiresAt,
 		issuer.Buffer,
 		issuer.Duration,
+		issuer.Overlap,
+		issuer.ValidFrom,
 	)
-
 	// get the newly inserted issuer identifier
 	if err := row.Scan(&issuer.ID); err != nil {
 		tx.Rollback()
@@ -983,13 +986,16 @@ func (c *Server) convertDBIssuer(issuerToConvert issuer) (*Issuer, error) {
 			return cached.(*Issuer), nil
 		}
 	}
+
 	parsedIssuer, err := parseIssuer(issuerToConvert)
 	if err != nil {
 		return nil, err
 	}
+
 	if c.caches != nil {
 		c.caches["issuer"].SetDefault(stringifiedID, parseIssuer)
 	}
+
 	return &parsedIssuer, nil
 }
 
@@ -1015,10 +1021,14 @@ func parseIssuerKeys(issuerKeysToParse issuerKeys) (IssuerKeys, error) {
 func parseIssuer(issuerToParse issuer) (Issuer, error) {
 	parsedIssuer := Issuer{
 		ID:           issuerToParse.ID,
+		Version:      issuerToParse.Version,
 		IssuerType:   issuerToParse.IssuerType,
 		IssuerCohort: issuerToParse.IssuerCohort,
 		MaxTokens:    issuerToParse.MaxTokens,
-		Version:      issuerToParse.Version,
+		Buffer:       issuerToParse.Buffer,
+		Overlap:      issuerToParse.Overlap,
+		ValidFrom:    issuerToParse.ValidFrom,
+		Duration:     issuerToParse.Duration,
 	}
 	if issuerToParse.ExpiresAt.Valid {
 		parsedIssuer.ExpiresAt = issuerToParse.ExpiresAt.Time

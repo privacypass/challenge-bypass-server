@@ -36,7 +36,8 @@ func SignedBlindedTokenIssuerHandler(data []byte, producer *kafka.Writer, server
 	if len(blindedTokenRequestSet.Data) > 1 {
 		// NOTE: When we start supporting multiple requests we will need to review
 		// errors and return values as well.
-		return fmt.Errorf("request %s: data array unexpectedly contained more than a single message. this array is intended to make future extension easier, but no more than a single value is currently expected",
+		return fmt.Errorf(`request %s: data array unexpectedly contained more than a single message. this array is 
+						intended to make future extension easier, but no more than a single value is currently expected`,
 			blindedTokenRequestSet.Request_id)
 	}
 
