@@ -74,7 +74,7 @@ func (c *Server) redeemTokenWithDynamo(issuer *Issuer, preimage *crypto.TokenPre
 		return err
 	}
 
-	id := uuid.NewSHA1(*issuer.ID, string(preimageTxt))
+	id := uuid.NewSHA1(*issuer.ID, []byte(string(preimageTxt)))
 
 	redemption := RedemptionV2{
 		IssuerID:  issuer.ID.String(),
