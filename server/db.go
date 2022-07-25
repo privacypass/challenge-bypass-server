@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/brave-intl/challenge-bypass-server/utils/ptr"
+	"os"
 	"strconv"
 	"time"
 
@@ -157,6 +158,10 @@ func (c *Server) InitDb() {
 		if sc, ok := ae.ExistingCollector.(*metrics.StatsCollector); ok {
 			sc.AddStatsGetter("challenge_bypass_db", db)
 		}
+	}
+
+	if os.Getenv("ENV") != "production" {
+		time.Sleep(10 * time.Second)
 	}
 
 	driver, err := postgres.WithInstance(c.db.DB, &postgres.Config{})
@@ -611,7 +616,7 @@ func (c *Server) rotateIssuersV3() error {
 		err = tx.Commit()
 	}()
 
-	fetchedIssuers := []Issuer{}
+	fetchedIssuers := []issuer{}
 
 	// we need to get all of the v3 issuers that
 	// 1. are not expired
@@ -641,8 +646,13 @@ func (c *Server) rotateIssuersV3() error {
 
 	// for each issuer fetched
 	for _, issuer := range fetchedIssuers {
+		issuerDTO, err := parseIssuer(issuer)
+		if err != nil {
+			tx.Rollback()
+			return fmt.Errorf("error failed to parse db issuer to dto: %w", err)
+		}
 		// populate the buffer of keys for the v3 issuer
-		if err := txPopulateIssuerKeys(c.Logger, tx, issuer); err != nil {
+		if err := txPopulateIssuerKeys(c.Logger, tx, issuerDTO); err != nil {
 			tx.Rollback()
 			return fmt.Errorf("failed to close rows on v3 issuer creation: %w", err)
 		}
