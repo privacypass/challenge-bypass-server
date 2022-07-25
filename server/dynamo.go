@@ -1,7 +1,6 @@
 package server
 
 import (
-	"errors"
 	"os"
 	"time"
 
@@ -11,7 +10,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 	crypto "github.com/brave-intl/challenge-bypass-ristretto-ffi"
-	uuid "github.com/satori/go.uuid"
+	"github.com/google/uuid"
 )
 
 // InitDynamo initialzes the dynamo database connection
@@ -30,7 +29,6 @@ func (c *Server) InitDynamo() {
 	}
 
 	svc := dynamodb.New(sess, config)
-
 	c.dynamo = svc
 }
 
@@ -69,23 +67,17 @@ func (c *Server) fetchRedemptionV2(id uuid.UUID) (*RedemptionV2, error) {
 	return &redemption, nil
 }
 
-func (c *Server) redeemTokenV2(issuer *Issuer, preimage *crypto.TokenPreimage, payload string) error {
+func (c *Server) redeemTokenWithDynamo(issuer *Issuer, preimage *crypto.TokenPreimage, payload string) error {
 	preimageTxt, err := preimage.MarshalText()
 	if err != nil {
 		c.Logger.Error("Error Marshalling preimage")
 		return err
 	}
 
-	issuerUUID, err := uuid.FromString(issuer.ID)
-	if err != nil {
-		c.Logger.Error("Bad issuer id")
-		return errors.New("Bad issuer id")
-	}
-
-	id := uuid.NewV5(issuerUUID, string(preimageTxt))
+	id := uuid.NewSHA1(*issuer.ID, []byte(string(preimageTxt)))
 
 	redemption := RedemptionV2{
-		IssuerID:  issuer.ID,
+		IssuerID:  issuer.ID.String(),
 		ID:        id.String(),
 		PreImage:  string(preimageTxt),
 		Payload:   payload,

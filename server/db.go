@@ -4,18 +4,23 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"github.com/brave-intl/challenge-bypass-server/utils/ptr"
+	"os"
 	"strconv"
 	"time"
 
+	timeutils "github.com/brave-intl/bat-go/utils/time"
 	crypto "github.com/brave-intl/challenge-bypass-ristretto-ffi"
 	"github.com/brave-intl/challenge-bypass-server/utils/metrics"
 	migrate "github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file" // Why?
+	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 	"github.com/lib/pq"
 	cache "github.com/patrickmn/go-cache"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/sirupsen/logrus"
 )
 
 // CachingConfig is how long data is cached
@@ -35,28 +40,63 @@ type DbConfig struct {
 }
 
 type issuer struct {
-	ID           string      `db:"id"`
-	IssuerType   string      `db:"issuer_type"`
-	IssuerCohort int         `db:"issuer_cohort"`
-	SigningKey   []byte      `db:"signing_key"`
-	MaxTokens    int         `db:"max_tokens"`
-	CreatedAt    pq.NullTime `db:"created_at"`
-	ExpiresAt    pq.NullTime `db:"expires_at"`
-	RotatedAt    pq.NullTime `db:"rotated_at"`
-	Version      int         `db:"version"`
+	ID                   *uuid.UUID  `db:"issuer_id"`
+	IssuerType           string      `db:"issuer_type"`
+	IssuerCohort         int16       `db:"issuer_cohort"`
+	SigningKey           []byte      `db:"signing_key"`
+	MaxTokens            int         `db:"max_tokens"`
+	CreatedAt            pq.NullTime `db:"created_at"`
+	ExpiresAt            pq.NullTime `db:"expires_at"`
+	RotatedAt            pq.NullTime `db:"last_rotated_at"`
+	Version              int         `db:"version"`
+	ValidFrom            *time.Time  `json:"valid_from" db:"valid_from"`
+	Buffer               int         `json:"buffer" db:"buffer"`
+	DaysOut              int         `json:"days_out" db:"days_out"`
+	Overlap              int         `json:"overlap" db:"overlap"`
+	Duration             string      `json:"duration" db:"duration"`
+	RedemptionRepository string      `json:"-" db:"redemption_repository"`
+}
+
+// issuerKeys - an issuer that uses time based keys
+type issuerKeys struct {
+	ID         *uuid.UUID `db:"key_id"`
+	SigningKey []byte     `db:"signing_key"`
+	PublicKey  string     `db:"public_key"`
+	Cohort     int16      `db:"cohort"`
+	IssuerID   *uuid.UUID `db:"issuer_id"`
+	CreatedAt  *time.Time `db:"created_at"`
+	StartAt    *time.Time `db:"start_at"`
+	EndAt      *time.Time `db:"end_at"`
+}
+
+// IssuerKeys - an issuer that uses time based keys
+type IssuerKeys struct {
+	ID         *uuid.UUID         `json:"id"`
+	SigningKey *crypto.SigningKey `json:"-"`
+	PublicKey  string             `json:"public_key" db:"public_key"`
+	Cohort     int16              `json:"cohort" db:"cohort"`
+	IssuerID   *uuid.UUID         `json:"issuer_id" db:"issuer_id"`
+	CreatedAt  *time.Time         `json:"created_at" db:"created_at"`
+	StartAt    *time.Time         `json:"start_at" db:"start_at"`
+	EndAt      *time.Time         `json:"end_at" db:"end_at"`
 }
 
 // Issuer of tokens
 type Issuer struct {
 	SigningKey   *crypto.SigningKey
-	ID           string    `json:"id"`
-	IssuerType   string    `json:"issuer_type"`
-	IssuerCohort int       `json:"issuer_cohort"`
-	MaxTokens    int       `json:"max_tokens"`
-	CreatedAt    time.Time `json:"created_at"`
-	ExpiresAt    time.Time `json:"expires_at"`
-	RotatedAt    time.Time `json:"rotated_at"`
-	Version      int       `json:"version"`
+	ID           *uuid.UUID   `json:"id"`
+	IssuerType   string       `json:"issuer_type"`
+	IssuerCohort int16        `json:"issuer_cohort"`
+	MaxTokens    int          `json:"max_tokens"`
+	CreatedAt    time.Time    `json:"created_at"`
+	ExpiresAt    time.Time    `json:"expires_at"`
+	RotatedAt    time.Time    `json:"rotated_at"`
+	Version      int          `json:"version"`
+	ValidFrom    *time.Time   `json:"valid_from"`
+	Buffer       int          `json:"buffer"`
+	Overlap      int          `json:"overlap"`
+	Duration     string       `json:"duration"`
+	Keys         []IssuerKeys `json:"keys"`
 }
 
 // Redemption is a token Redeemed
@@ -120,6 +160,10 @@ func (c *Server) InitDb() {
 		}
 	}
 
+	if os.Getenv("ENV") != "production" {
+		time.Sleep(10 * time.Second)
+	}
+
 	driver, err := postgres.WithInstance(c.db.DB, &postgres.Config{})
 	if err != nil {
 		panic(err)
@@ -130,7 +174,7 @@ func (c *Server) InitDb() {
 	if err != nil {
 		panic(err)
 	}
-	err = m.Migrate(5)
+	err = m.Migrate(7)
 	if err != migrate.ErrNoChange && err != nil {
 		panic(err)
 	}
@@ -183,6 +227,12 @@ var (
 		Buckets: latencyBuckets,
 	})
 
+	createTimeLimitedIssuerDBDuration = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Name:    "db_create_time_limited_issuer_duration",
+		Help:    "create issuer sql call duration",
+		Buckets: latencyBuckets,
+	})
+
 	createRedemptionDBDuration = prometheus.NewHistogram(prometheus.HistogramOpts{
 		Name:    "db_create_redemption_duration",
 		Help:    "create redemption sql call duration",
@@ -203,6 +253,17 @@ func incrementCounter(c prometheus.Counter) {
 func (c *Server) fetchIssuer(issuerID string) (*Issuer, error) {
 	defer incrementCounter(fetchIssuerCounter)
 
+	tx := c.db.MustBegin()
+	var err error = nil
+
+	defer func() {
+		if err != nil {
+			err = tx.Rollback()
+			return
+		}
+		err = tx.Commit()
+	}()
+
 	if c.caches != nil {
 		if cached, found := c.caches["issuer"].Get(issuerID); found {
 			return cached.(*Issuer), nil
@@ -210,10 +271,9 @@ func (c *Server) fetchIssuer(issuerID string) (*Issuer, error) {
 	}
 
 	fetchedIssuer := issuer{}
-	queryTimer := prometheus.NewTimer(fetchIssuerByTypeDBDuration)
-	err := c.db.Get(&fetchedIssuer, `
-	    SELECT * FROM issuers
-	    WHERE id=$1
+	err = tx.Get(&fetchedIssuer, `
+	    SELECT * FROM v3_issuers
+	    WHERE issuer_id=$1
 	`, issuerID)
 
 	if err != nil {
@@ -224,12 +284,31 @@ func (c *Server) fetchIssuer(issuerID string) (*Issuer, error) {
 	if err != nil {
 		return nil, err
 	}
-	queryTimer.ObserveDuration()
+	// get the signing keys
+	if convertedIssuer.Keys == nil {
+		convertedIssuer.Keys = []IssuerKeys{}
+	}
 
-	convertedIssuer.SigningKey = &crypto.SigningKey{}
-	err = convertedIssuer.SigningKey.UnmarshalText(fetchedIssuer.SigningKey)
+	var fetchIssuerKeys = []issuerKeys{}
+	err = tx.Select(
+		&fetchIssuerKeys,
+		`SELECT *
+			FROM v3_issuer_keys where issuer_id=$1
+			ORDER BY end_at DESC NULLS LAST, start_at DESC`,
+		convertedIssuer.ID,
+	)
 	if err != nil {
+		c.Logger.Error("Failed to extract issuer keys from DB")
 		return nil, err
+	}
+
+	for _, v := range fetchIssuerKeys {
+		k, err := c.convertDBIssuerKeys(v)
+		if err != nil {
+			c.Logger.Error("Failed to convert issuer keys from DB")
+			return nil, err
+		}
+		convertedIssuer.Keys = append(convertedIssuer.Keys, *k)
 	}
 
 	if c.caches != nil {
@@ -239,21 +318,33 @@ func (c *Server) fetchIssuer(issuerID string) (*Issuer, error) {
 	return convertedIssuer, nil
 }
 
-func (c *Server) fetchIssuersByCohort(issuerType string, issuerCohort int) (*[]Issuer, error) {
-	compositeCacheKey := issuerType + strconv.Itoa(issuerCohort)
+func (c *Server) fetchIssuersByCohort(issuerType string, issuerCohort int16) (*[]Issuer, error) {
+	// will not lose resolution int16->int
+	compositeCacheKey := issuerType + strconv.Itoa(int(issuerCohort))
 	if c.caches != nil {
 		if cached, found := c.caches["issuercohort"].Get(compositeCacheKey); found {
 			return cached.(*[]Issuer), nil
 		}
 	}
 
+	tx := c.db.MustBegin()
+	var err error = nil
+
+	defer func() {
+		if err != nil {
+			err = tx.Rollback()
+			return
+		}
+		err = tx.Commit()
+	}()
+
 	fetchedIssuers := []issuer{}
-	err := c.db.Select(
+	err = tx.Select(
 		&fetchedIssuers,
-		`SELECT *
-		FROM issuers 
-		WHERE issuer_type=$1 AND issuer_cohort=$2
-		ORDER BY expires_at DESC NULLS LAST, created_at DESC`, issuerType, issuerCohort)
+		`SELECT i.*
+		FROM v3_issuers i join v3_issuer_keys k on (i.issuer_id=k.issuer_id)
+		WHERE i.issuer_type=$1 AND k.cohort=$2
+		ORDER BY i.expires_at DESC NULLS LAST, i.created_at DESC`, issuerType, issuerCohort)
 	if err != nil {
 		return nil, err
 	}
@@ -267,6 +358,32 @@ func (c *Server) fetchIssuersByCohort(issuerType string, issuerCohort int) (*[]I
 		convertedIssuer, err := c.convertDBIssuer(fetchedIssuer)
 		if err != nil {
 			return nil, err
+		}
+		// get the keys for the Issuer
+		if convertedIssuer.Keys == nil {
+			convertedIssuer.Keys = []IssuerKeys{}
+		}
+
+		var fetchIssuerKeys = []issuerKeys{}
+		err = tx.Select(
+			&fetchIssuerKeys,
+			`SELECT *
+			FROM v3_issuer_keys where issuer_id=$1
+			ORDER BY end_at DESC NULLS LAST, start_at DESC`,
+			convertedIssuer.ID,
+		)
+		if err != nil {
+			c.Logger.Error("Failed to extract issuer keys from DB")
+			return nil, err
+		}
+
+		for _, v := range fetchIssuerKeys {
+			k, err := c.convertDBIssuerKeys(v)
+			if err != nil {
+				c.Logger.Error("Failed to convert issuer keys from DB")
+				return nil, err
+			}
+			convertedIssuer.Keys = append(convertedIssuer.Keys, *k)
 		}
 
 		issuers = append(issuers, *convertedIssuer)
@@ -286,11 +403,22 @@ func (c *Server) fetchIssuers(issuerType string) (*[]Issuer, error) {
 		}
 	}
 
+	tx := c.db.MustBegin()
+	var err error = nil
+
+	defer func() {
+		if err != nil {
+			err = tx.Rollback()
+			return
+		}
+		err = tx.Commit()
+	}()
+
 	fetchedIssuers := []issuer{}
-	err := c.db.Select(
+	err = tx.Select(
 		&fetchedIssuers,
 		`SELECT *
-		FROM issuers 
+		FROM v3_issuers
 		WHERE issuer_type=$1
 		ORDER BY expires_at DESC NULLS LAST, created_at DESC`, issuerType)
 	if err != nil {
@@ -306,6 +434,32 @@ func (c *Server) fetchIssuers(issuerType string) (*[]Issuer, error) {
 		convertedIssuer, err := c.convertDBIssuer(fetchedIssuer)
 		if err != nil {
 			return nil, err
+		}
+		// get the keys for the Issuer
+		if convertedIssuer.Keys == nil {
+			convertedIssuer.Keys = []IssuerKeys{}
+		}
+
+		var fetchIssuerKeys = []issuerKeys{}
+		err = tx.Select(
+			&fetchIssuerKeys,
+			`SELECT *
+			FROM v3_issuer_keys where issuer_id=$1
+			ORDER BY end_at DESC NULLS LAST, start_at DESC`,
+			convertedIssuer.ID,
+		)
+		if err != nil {
+			c.Logger.Error("Failed to extract issuer keys from DB")
+			return nil, err
+		}
+
+		for _, v := range fetchIssuerKeys {
+			k, err := c.convertDBIssuerKeys(v)
+			if err != nil {
+				c.Logger.Error("Failed to convert issuer keys from DB")
+				return nil, err
+			}
+			convertedIssuer.Keys = append(convertedIssuer.Keys, *k)
 		}
 
 		issuers = append(issuers, *convertedIssuer)
@@ -327,11 +481,22 @@ func (c *Server) FetchAllIssuers() (*[]Issuer, error) {
 		}
 	}
 
+	tx := c.db.MustBegin()
+	var err error = nil
+
+	defer func() {
+		if err != nil {
+			err = tx.Rollback()
+			return
+		}
+		err = tx.Commit()
+	}()
+
 	fetchedIssuers := []issuer{}
-	err := c.db.Select(
+	err = tx.Select(
 		&fetchedIssuers,
 		`SELECT *
-		FROM issuers
+		FROM v3_issuers
 		ORDER BY expires_at DESC NULLS LAST, created_at DESC`)
 	if err != nil {
 		c.Logger.Error("Failed to extract issuers from DB")
@@ -346,6 +511,32 @@ func (c *Server) FetchAllIssuers() (*[]Issuer, error) {
 			return nil, err
 		}
 
+		if convertedIssuer.Keys == nil {
+			convertedIssuer.Keys = []IssuerKeys{}
+		}
+
+		var fetchIssuerKeys = []issuerKeys{}
+		err = tx.Select(
+			&fetchIssuerKeys,
+			`SELECT *
+			FROM v3_issuer_keys where issuer_id=$1
+			ORDER BY end_at DESC NULLS LAST, start_at DESC`,
+			convertedIssuer.ID,
+		)
+		if err != nil {
+			c.Logger.Error("Failed to extract issuer keys from DB")
+			return nil, err
+		}
+
+		for _, v := range fetchIssuerKeys {
+			k, err := c.convertDBIssuerKeys(v)
+			if err != nil {
+				c.Logger.Error("Failed to convert issuer keys from DB")
+				return nil, err
+			}
+			convertedIssuer.Keys = append(convertedIssuer.Keys, *k)
+		}
+
 		issuers = append(issuers, *convertedIssuer)
 	}
 
@@ -357,10 +548,12 @@ func (c *Server) FetchAllIssuers() (*[]Issuer, error) {
 }
 
 // RotateIssuers is the function that rotates
-func (c *Server) rotateIssuers() (err error) {
+func (c *Server) rotateIssuers() error {
 	cfg := c.dbConfig
 
 	tx := c.db.MustBegin()
+
+	var err error = nil
 
 	defer func() {
 		if err != nil {
@@ -373,57 +566,33 @@ func (c *Server) rotateIssuers() (err error) {
 	fetchedIssuers := []issuer{}
 	err = tx.Select(
 		&fetchedIssuers,
-		`SELECT * FROM issuers 
+		`SELECT * FROM v3_issuers
 			WHERE expires_at IS NOT NULL
-			AND rotated_at IS NULL
+			AND last_rotated_at < NOW() - $1 * INTERVAL '1 day'
 			AND expires_at < NOW() + $1 * INTERVAL '1 day'
+			AND version >= 2
 		FOR UPDATE SKIP LOCKED`, cfg.DefaultDaysBeforeExpiry,
 	)
 	if err != nil {
 		return err
 	}
 
-	for _, fetchedIssuer := range fetchedIssuers {
-		rotationIssuer := Issuer{
-			ID:           fetchedIssuer.ID,
-			IssuerType:   fetchedIssuer.IssuerType,
-			IssuerCohort: fetchedIssuer.IssuerCohort,
-			MaxTokens:    fetchedIssuer.MaxTokens,
-			ExpiresAt:    fetchedIssuer.ExpiresAt.Time,
-			RotatedAt:    fetchedIssuer.RotatedAt.Time,
-			CreatedAt:    fetchedIssuer.CreatedAt.Time,
-			Version:      fetchedIssuer.Version,
+	for _, v := range fetchedIssuers {
+		// converted
+		issuer, err := c.convertDBIssuer(v)
+		if err != nil {
+			tx.Rollback()
+			return fmt.Errorf("failed to convert rows on v3 issuer creation: %w", err)
 		}
-
-		if rotationIssuer.MaxTokens == 0 {
-			rotationIssuer.MaxTokens = 40
-		}
-
-		signingKey, errSigningKey := crypto.RandomSigningKey()
-		if errSigningKey != nil {
-			err = errSigningKey
-			return err
-		}
-
-		signingKeyTxt, errSigningKeyText := signingKey.MarshalText()
-		if errSigningKeyText != nil {
-			err = errSigningKeyText
-			return err
+		// populate keys in db
+		if err := txPopulateIssuerKeys(c.Logger, tx, *issuer); err != nil {
+			tx.Rollback()
+			return fmt.Errorf("failed to populate v3 issuer keys: %w", err)
 		}
 
 		if _, err = tx.Exec(
-			`INSERT INTO issuers(issuer_type, issuer_cohort, signing_key, max_tokens, expires_at, version) VALUES ($1, $2, $3, $4, $5, 2)`,
-			rotationIssuer.IssuerType,
-			rotationIssuer.IssuerCohort,
-			signingKeyTxt,
-			rotationIssuer.MaxTokens,
-			rotationIssuer.ExpiresAt.AddDate(0, 0, cfg.DefaultIssuerValidDays),
-		); err != nil {
-			return err
-		}
-		if _, err = tx.Exec(
-			`UPDATE issuers SET rotated_at = now() where id = $1`,
-			fetchedIssuer.ID,
+			`UPDATE v3_issuers SET last_rotated_at = now() where issuer_id = $1`,
+			issuer.ID,
 		); err != nil {
 			return err
 		}
@@ -432,49 +601,294 @@ func (c *Server) rotateIssuers() (err error) {
 	return nil
 }
 
-func (c *Server) createIssuer(issuerType string, issuerCohort int, maxTokens int, expiresAt *time.Time) error {
+// rotateIssuers is the function that rotates
+func (c *Server) rotateIssuersV3() error {
+
+	tx := c.db.MustBegin()
+
+	var err error = nil
+
+	defer func() {
+		if err != nil {
+			err = tx.Rollback()
+			return
+		}
+		err = tx.Commit()
+	}()
+
+	fetchedIssuers := []issuer{}
+
+	// we need to get all of the v3 issuers that
+	// 1. are not expired
+	// 2. now is after valid_from
+	// 3. have max(issuer_v3.end_at) < buffer
+
+	err = tx.Select(
+		&fetchedIssuers,
+		`
+			select
+				i.id, i.issuer_type, i.issuer_cohort, i.max_tokens, i.version,
+				i.buffer, i.valid_from, i.last_rotated_at, i.expires_at, i.duration,
+				i.created_at
+			from
+				v3_issuers i
+				join v3_issuer_keys ik on (ik.issuer_id = i.issuer_id)
+			where
+				i.version = 3
+				and i.expires_at is not null and i.expires_at < now()
+				and greatest(ik.end_at) < now() + i.buffer * i.duration::interval
+			for update skip locked
+		`,
+	)
+	if err != nil {
+		return err
+	}
+
+	// for each issuer fetched
+	for _, issuer := range fetchedIssuers {
+		issuerDTO, err := parseIssuer(issuer)
+		if err != nil {
+			tx.Rollback()
+			return fmt.Errorf("error failed to parse db issuer to dto: %w", err)
+		}
+		// populate the buffer of keys for the v3 issuer
+		if err := txPopulateIssuerKeys(c.Logger, tx, issuerDTO); err != nil {
+			tx.Rollback()
+			return fmt.Errorf("failed to close rows on v3 issuer creation: %w", err)
+		}
+		// denote that the v3 issuer was rotated at this time
+		if _, err = tx.Exec(
+			`UPDATE v3_issuers SET last_rotated_at = now() where issuer_id = $1`,
+			issuer.ID,
+		); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// createIssuer - creation of a v3 issuer
+func (c *Server) createV3Issuer(issuer Issuer) error {
+	defer incrementCounter(createIssuerCounter)
+	if issuer.MaxTokens == 0 {
+		issuer.MaxTokens = 40
+	}
+
+	validFrom := issuer.ValidFrom
+	if issuer.ValidFrom == nil {
+		validFrom = ptr.FromTime(time.Now())
+	}
+
+	tx := c.db.MustBegin()
+
+	queryTimer := prometheus.NewTimer(createTimeLimitedIssuerDBDuration)
+	row := tx.QueryRowx(
+		`
+		INSERT INTO v3_issuers
+			(
+				issuer_type,
+				issuer_cohort,
+				max_tokens,
+				version,
+				expires_at,
+				buffer,
+				duration,
+			 	overlap,
+			 	valid_from)
+		VALUES
+		($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		RETURNING issuer_id`,
+		issuer.IssuerType,
+		issuer.IssuerCohort,
+		issuer.MaxTokens,
+		issuer.Version,
+		issuer.ExpiresAt,
+		issuer.Buffer,
+		issuer.Duration,
+		issuer.Overlap,
+		validFrom,
+	)
+	// get the newly inserted issuer identifier
+	if err := row.Scan(&issuer.ID); err != nil {
+		tx.Rollback()
+		return fmt.Errorf("failed to get v3 issuer id: %w", err)
+	}
+
+	if err := txPopulateIssuerKeys(c.Logger, tx, issuer); err != nil {
+		tx.Rollback()
+		return fmt.Errorf("failed to close rows on v3 issuer creation: %w", err)
+	}
+	queryTimer.ObserveDuration()
+	return tx.Commit()
+}
+
+// on the transaction, populate v3 issuer keys for the v3 issuer
+func txPopulateIssuerKeys(logger *logrus.Logger, tx *sqlx.Tx, issuer Issuer) error {
+	var (
+		duration *timeutils.ISODuration
+		err      error
+	)
+
+	if issuer.Version == 3 {
+		// get the duration from the issuer
+		duration, err = timeutils.ParseDuration(issuer.Duration)
+		if err != nil {
+			return fmt.Errorf("failed to parse issuer duration: %w", err)
+		}
+	}
+
+	// v1/v2 issuers only have a buffer of 1
+	if issuer.Version < 3 {
+		issuer.Buffer = 1
+	}
+
+	var tmp time.Time
+	if issuer.ValidFrom != nil {
+		tmp = *issuer.ValidFrom
+	}
+	start := &tmp
+
+	i := 0
+	// time to create the keys associated with the issuer
+	if issuer.Keys == nil || len(issuer.Keys) == 0 {
+		issuer.Keys = []IssuerKeys{}
+	} else {
+		// if the issuer has keys already, start needs to be the last item in slice
+		tmp := *issuer.Keys[len(issuer.Keys)-1].EndAt
+		start = &tmp
+		i = len(issuer.Keys)
+	}
+
+	valueFmtStr := ""
+
+	var keys = []issuerKeys{}
+	var position = 0
+	// for i in buffer, create signing keys for each
+	for ; i < issuer.Buffer; i++ {
+		end := new(time.Time)
+		if duration != nil {
+			// start/end, increment every iteration
+			end, err = duration.From(*start)
+			if err != nil {
+				tx.Rollback()
+				return fmt.Errorf("unable to calculate end time: %w", err)
+			}
+		}
+
+		signingKey, err := crypto.RandomSigningKey()
+		if err != nil {
+			logger.Error("Error generating key")
+			tx.Rollback()
+			return err
+		}
+
+		signingKeyTxt, err := signingKey.MarshalText()
+		if err != nil {
+			logger.Error("Error marshalling signing key")
+			tx.Rollback()
+			return err
+		}
+
+		pubKeyTxt, err := signingKey.PublicKey().MarshalText()
+		if err != nil {
+			logger.Error("Error marshalling public key")
+			tx.Rollback()
+			return err
+		}
+
+		tmpStart := *start
+		tmpEnd := *end
+
+		var k = issuerKeys{
+			SigningKey: signingKeyTxt,
+			PublicKey:  string(pubKeyTxt),
+			Cohort:     issuer.IssuerCohort,
+			IssuerID:   issuer.ID,
+			StartAt:    &tmpStart,
+			EndAt:      &tmpEnd,
+		}
+
+		keys = append(keys, k)
+
+		if issuer.ValidFrom != nil && !(*start).Equal(*issuer.ValidFrom) {
+			valueFmtStr += ", "
+		}
+		valueFmtStr += fmt.Sprintf("($%d, $%d, $%d, $%d, $%d, $%d)",
+			position+1,
+			position+2,
+			position+3,
+			position+4,
+			position+5,
+			position+6)
+
+		// next set of position parameter start
+		position += 6
+
+		// increment start
+		if start != nil && end != nil {
+			tmp := *end
+			start = &tmp
+		}
+	}
+
+	var values []interface{}
+	// create our value params for insertion
+	for _, v := range keys {
+		values = append(values,
+			v.IssuerID, v.SigningKey, v.PublicKey, v.Cohort, v.StartAt, v.EndAt)
+	}
+
+	rows, err := tx.Query(
+		fmt.Sprintf(`
+		INSERT INTO v3_issuer_keys
+			(
+				issuer_id,
+				signing_key,
+				public_key,
+				cohort,
+				start_at,
+				end_at
+			)
+		VALUES %s`, valueFmtStr), values...)
+	if err != nil {
+		logger.Error("Could not insert the new issuer keys into the DB")
+		tx.Rollback()
+		return err
+	}
+	return rows.Close()
+}
+
+func (c *Server) createIssuerV2(issuerType string, issuerCohort int16, maxTokens int, expiresAt *time.Time) error {
 	defer incrementCounter(createIssuerCounter)
 	if maxTokens == 0 {
 		maxTokens = 40
 	}
 
-	signingKey, err := crypto.RandomSigningKey()
-	if err != nil {
-		c.Logger.Error("Error generating key")
-		return err
+	// convert to a v3 issuer
+	return c.createV3Issuer(Issuer{
+		IssuerType:   issuerType,
+		IssuerCohort: issuerCohort,
+		Version:      2,
+		MaxTokens:    maxTokens,
+		ExpiresAt:    *expiresAt,
+	})
+}
+
+func (c *Server) createIssuer(issuerType string, issuerCohort int16, maxTokens int, expiresAt *time.Time) error {
+	defer incrementCounter(createIssuerCounter)
+	if maxTokens == 0 {
+		maxTokens = 40
 	}
 
-	signingKeyTxt, err := signingKey.MarshalText()
-	if err != nil {
-		c.Logger.Error("Error marshalling signing key")
-		return err
-	}
-
-	queryTimer := prometheus.NewTimer(createIssuerDBDuration)
-	rows, err := c.db.Query(
-		`INSERT INTO issuers(issuer_type, issuer_cohort, signing_key, max_tokens, expires_at, version) VALUES ($1, $2, $3, $4, $5, 2)`,
-		issuerType,
-		issuerCohort,
-		signingKeyTxt,
-		maxTokens,
-		expiresAt,
-	)
-	if err != nil {
-		c.Logger.Error("Could not insert the new issuer into the DB")
-		queryTimer.ObserveDuration()
-		return err
-	}
-	defer rows.Close()
-	queryTimer.ObserveDuration()
-
-	compositeCacheKey := issuerType + strconv.Itoa(issuerCohort)
-	if c.caches != nil {
-		if _, found := c.caches["issuercohort"].Get(compositeCacheKey); found {
-			c.caches["issuercohort"].Delete(compositeCacheKey)
-		}
-	}
-
-	return nil
+	// convert to a v3 issuer
+	return c.createV3Issuer(Issuer{
+		IssuerType:   issuerType,
+		IssuerCohort: issuerCohort,
+		Version:      1,
+		MaxTokens:    maxTokens,
+		ExpiresAt:    *expiresAt,
+	})
 }
 
 // Queryable is an interface requiring the method Query
@@ -487,8 +901,8 @@ func (c *Server) RedeemToken(issuerForRedemption *Issuer, preimage *crypto.Token
 	defer incrementCounter(redeemTokenCounter)
 	if issuerForRedemption.Version == 1 {
 		return redeemTokenWithDB(c.db, issuerForRedemption.IssuerType, preimage, payload)
-	} else if issuerForRedemption.Version == 2 {
-		return c.redeemTokenV2(issuerForRedemption, preimage, payload)
+	} else if issuerForRedemption.Version == 2 || issuerForRedemption.Version == 3 {
+		return c.redeemTokenWithDynamo(issuerForRedemption, preimage, payload)
 	}
 	return errors.New("Wrong Issuer Version")
 }
@@ -502,13 +916,21 @@ func redeemTokenWithDB(db Queryable, stringIssuer string, preimage *crypto.Token
 	queryTimer := prometheus.NewTimer(createRedemptionDBDuration)
 	rows, err := db.Query(
 		`INSERT INTO redemptions(id, issuer_type, ts, payload) VALUES ($1, $2, NOW(), $3)`, preimageTxt, stringIssuer, payload)
+	defer func() error {
+		if rows != nil {
+			err := rows.Close()
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	}()
 	if err != nil {
 		if err, ok := err.(*pq.Error); ok && err.Code == "23505" { // unique constraint violation
 			return errDuplicateRedemption
 		}
 		return err
 	}
-	defer rows.Close()
 
 	queryTimer.ObserveDuration()
 	return nil
@@ -556,30 +978,73 @@ func (c *Server) fetchRedemption(issuerType, ID string) (*Redemption, error) {
 	return nil, errRedemptionNotFound
 }
 
-func (c *Server) convertDBIssuer(issuerToConvert issuer) (*Issuer, error) {
-	stringifiedSigningKey := string(issuerToConvert.SigningKey)
+func (c *Server) convertDBIssuerKeys(issuerKeyToConvert issuerKeys) (*IssuerKeys, error) {
+	stringifiedSigningKey := string(issuerKeyToConvert.SigningKey)
 	if c.caches != nil {
-		if cached, found := c.caches["convertedissuers"].Get(stringifiedSigningKey); found {
-			return cached.(*Issuer), nil
+		if cached, found := c.caches["convertedissuerkeyss"].Get(stringifiedSigningKey); found {
+			return cached.(*IssuerKeys), nil
 		}
 	}
-	parsedIssuer, err := parseIssuer(issuerToConvert)
+	parsedIssuerKeys, err := parseIssuerKeys(issuerKeyToConvert)
 	if err != nil {
 		return nil, err
 	}
 	if c.caches != nil {
-		c.caches["issuer"].SetDefault(stringifiedSigningKey, parseIssuer)
+		c.caches["issuerkeys"].SetDefault(stringifiedSigningKey, parseIssuerKeys)
 	}
+	return &parsedIssuerKeys, nil
+}
+
+func (c *Server) convertDBIssuer(issuerToConvert issuer) (*Issuer, error) {
+	stringifiedID := string(issuerToConvert.ID.String())
+	if c.caches != nil {
+		if cached, found := c.caches["convertedissuers"].Get(stringifiedID); found {
+			return cached.(*Issuer), nil
+		}
+	}
+
+	parsedIssuer, err := parseIssuer(issuerToConvert)
+	if err != nil {
+		return nil, err
+	}
+
+	if c.caches != nil {
+		c.caches["issuer"].SetDefault(stringifiedID, parseIssuer)
+	}
+
 	return &parsedIssuer, nil
+}
+
+func parseIssuerKeys(issuerKeysToParse issuerKeys) (IssuerKeys, error) {
+	parsedIssuerKey := IssuerKeys{
+		ID:        issuerKeysToParse.ID,
+		Cohort:    issuerKeysToParse.Cohort,
+		CreatedAt: issuerKeysToParse.CreatedAt,
+		StartAt:   issuerKeysToParse.StartAt,
+		EndAt:     issuerKeysToParse.EndAt,
+		IssuerID:  issuerKeysToParse.IssuerID,
+		PublicKey: issuerKeysToParse.PublicKey,
+	}
+
+	parsedIssuerKey.SigningKey = &crypto.SigningKey{}
+	err := parsedIssuerKey.SigningKey.UnmarshalText(issuerKeysToParse.SigningKey)
+	if err != nil {
+		return IssuerKeys{}, err
+	}
+	return parsedIssuerKey, nil
 }
 
 func parseIssuer(issuerToParse issuer) (Issuer, error) {
 	parsedIssuer := Issuer{
 		ID:           issuerToParse.ID,
+		Version:      issuerToParse.Version,
 		IssuerType:   issuerToParse.IssuerType,
 		IssuerCohort: issuerToParse.IssuerCohort,
 		MaxTokens:    issuerToParse.MaxTokens,
-		Version:      issuerToParse.Version,
+		Buffer:       issuerToParse.Buffer,
+		Overlap:      issuerToParse.Overlap,
+		ValidFrom:    issuerToParse.ValidFrom,
+		Duration:     issuerToParse.Duration,
 	}
 	if issuerToParse.ExpiresAt.Valid {
 		parsedIssuer.ExpiresAt = issuerToParse.ExpiresAt.Time
@@ -591,10 +1056,5 @@ func parseIssuer(issuerToParse issuer) (Issuer, error) {
 		parsedIssuer.RotatedAt = issuerToParse.RotatedAt.Time
 	}
 
-	parsedIssuer.SigningKey = &crypto.SigningKey{}
-	err := parsedIssuer.SigningKey.UnmarshalText(issuerToParse.SigningKey)
-	if err != nil {
-		return Issuer{}, err
-	}
 	return parsedIssuer, nil
 }

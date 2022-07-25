@@ -13,7 +13,9 @@ import (
 
 // SetupDynamodbTables this function sets up tables for use in dynamodb tests.
 func SetupDynamodbTables(db *dynamodb.DynamoDB) error {
-	_, _ = db.DeleteTable(&dynamodb.DeleteTableInput{})
+	_, _ = db.DeleteTable(&dynamodb.DeleteTableInput{
+		TableName: ptr.FromString("redemptions"),
+	})
 
 	input := &dynamodb.CreateTableInput{
 		TableName:   ptr.FromString("redemptions"),
