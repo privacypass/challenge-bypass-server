@@ -3,7 +3,7 @@ module github.com/brave-intl/challenge-bypass-server
 go 1.18
 
 require (
-	github.com/actgardner/gogen-avro/v10 v10.2.0
+	github.com/actgardner/gogen-avro/v10 v10.2.1
 	github.com/aws/aws-sdk-go v1.37.19
 	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.13.0
 	github.com/brave-intl/bat-go v0.5.1
@@ -25,7 +25,7 @@ require (
 	github.com/satori/go.uuid v1.2.0
 	github.com/segmentio/kafka-go v0.4.17
 	github.com/sirupsen/logrus v1.8.1
-	github.com/stretchr/testify v1.7.0
+	github.com/stretchr/testify v1.7.1
 )
 
 require (
