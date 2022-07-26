@@ -627,7 +627,7 @@ func (c *Server) rotateIssuersV3() error {
 		&fetchedIssuers,
 		`
 			select
-				i.id, i.issuer_type, i.issuer_cohort, i.max_tokens, i.version,
+				i.issuer_id, i.issuer_type, i.issuer_cohort, i.max_tokens, i.version,
 				i.buffer, i.valid_from, i.last_rotated_at, i.expires_at, i.duration,
 				i.created_at
 			from

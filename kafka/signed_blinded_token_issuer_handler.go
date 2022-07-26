@@ -2,6 +2,8 @@ package kafka
 
 import (
 	"bytes"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -11,7 +13,7 @@ import (
 	"github.com/brave-intl/challenge-bypass-server/btd"
 	cbpServer "github.com/brave-intl/challenge-bypass-server/server"
 	"github.com/rs/zerolog"
-	kafka "github.com/segmentio/kafka-go"
+	"github.com/segmentio/kafka-go"
 )
 
 // SignedBlindedTokenIssuerHandler emits signed, blinded tokens based on provided blinded tokens.
@@ -210,12 +212,18 @@ OUTER:
 				return fmt.Errorf("error could not marshal signing key: %w", err)
 			}
 
+			// update associated data with additional fields
+			enrichedAssociatedData, err := enrichAssociatedData(request.Associated_data, issuer)
+			if err != nil {
+				return fmt.Errorf("error enriching associated data: %w", err)
+			}
+
 			blindedTokenResults = append(blindedTokenResults, avroSchema.SigningResult{
 				Signed_tokens:     marshaledTokens,
 				Proof:             string(marshaledDLEQProof),
 				Issuer_public_key: string(marshaledPublicKey),
 				Status:            issuerOk,
-				Associated_data:   request.Associated_data,
+				Associated_data:   enrichedAssociatedData,
 			})
 		}
 	}
@@ -239,4 +247,30 @@ OUTER:
 	}
 
 	return nil
+}
+
+// enrichAssociatedData enrich the associated data with extra fields.
+func enrichAssociatedData(associatedData []byte, issuer *cbpServer.Issuer) ([]byte, error) {
+	decodedBytes, err := base64.StdEncoding.DecodeString(string(associatedData))
+	if err != nil {
+		return nil, fmt.Errorf("error could not base64 decode associated data: %w", err)
+	}
+
+	var enrichedData map[string]string
+	err = json.Unmarshal(decodedBytes, &enrichedData)
+	if err != nil {
+		return nil, fmt.Errorf("error decoding associated data: %w", err)
+	}
+
+	enrichedData["valid_from"] = issuer.ValidFrom.String()
+	enrichedData["valid_to"] = issuer.ExpiresAt.String()
+
+	encodedBytes, err := json.Marshal(enrichedData)
+	if err != nil {
+		return nil, fmt.Errorf("error encoding enriched data: %w", err)
+	}
+
+	encodedString := base64.StdEncoding.EncodeToString(encodedBytes)
+
+	return []byte(encodedString), nil
 }
