@@ -2,7 +2,7 @@
     "namespace": "brave.cbp",
     "type": "record",
     "doc": "Top level request containing the data to be processed, as well as any top level metadata for this message.",
-    "name": "OriginalSigningResultSet",
+    "name": "SigningResultV1Set",
     "fields" : [
         {"name": "request_id", "type": "string"},
         {
@@ -12,7 +12,7 @@
                 "items":{
                     "namespace": "brave.cbp",
                     "type": "record",
-                    "name": "OriginalSigningResult",
+                    "name": "SigningResultV1",
                     "fields": [
                         {
                             "name": "signed_tokens",
@@ -27,7 +27,7 @@
                         {"name": "public_key", "type": "string"},
                         {"name": "proof", "type": "string"},
                         {"name": "status", "type": {
-                            "name": "OriginalSigningResultStatus",
+                            "name": "SigningResultV1Status",
                             "type": "enum",
                             "symbols": ["ok", "invalid_issuer", "error"]
                         }},
