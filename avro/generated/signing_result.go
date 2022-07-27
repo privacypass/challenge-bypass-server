@@ -23,16 +23,20 @@ var _ = fmt.Printf
 type SigningResult struct {
 	Signed_tokens []string `json:"signed_tokens"`
 
-	Issuer_public_key string `json:"issuer_public_key"`
+	Issuer_public_key string `json:"public_key"`
 
 	Proof string `json:"proof"`
+
+	Valid_from string `json:"valid_from"`
+
+	Valid_to string `json:"valid_to"`
 
 	Status SigningResultStatus `json:"status"`
 	// contains METADATA
 	Associated_data Bytes `json:"associated_data"`
 }
 
-const SigningResultAvroCRC64Fingerprint = "&S1\xa1\xe45\x17\xf6"
+const SigningResultAvroCRC64Fingerprint = "\x93a/D\xaa\xa4\xea\xc7"
 
 func NewSigningResult() SigningResult {
 	r := SigningResult{}
@@ -78,6 +82,14 @@ func writeSigningResult(r SigningResult, w io.Writer) error {
 	if err != nil {
 		return err
 	}
+	err = vm.WriteString(r.Valid_from, w)
+	if err != nil {
+		return err
+	}
+	err = vm.WriteString(r.Valid_to, w)
+	if err != nil {
+		return err
+	}
 	err = writeSigningResultStatus(r.Status, w)
 	if err != nil {
 		return err
@@ -94,7 +106,7 @@ func (r SigningResult) Serialize(w io.Writer) error {
 }
 
 func (r SigningResult) Schema() string {
-	return "{\"fields\":[{\"name\":\"signed_tokens\",\"type\":{\"items\":{\"name\":\"signed_token\",\"type\":\"string\"},\"type\":\"array\"}},{\"name\":\"public_key\",\"type\":\"string\"},{\"name\":\"proof\",\"type\":\"string\"},{\"name\":\"status\",\"type\":{\"name\":\"SigningResultStatus\",\"symbols\":[\"ok\",\"invalid_issuer\",\"error\"],\"type\":\"enum\"}},{\"doc\":\"contains METADATA\",\"name\":\"associated_data\",\"type\":\"bytes\"}],\"name\":\"brave.cbp.SigningResult\",\"type\":\"record\"}"
+	return "{\"fields\":[{\"name\":\"signed_tokens\",\"type\":{\"items\":{\"name\":\"signed_token\",\"type\":\"string\"},\"type\":\"array\"}},{\"name\":\"public_key\",\"type\":\"string\"},{\"name\":\"proof\",\"type\":\"string\"},{\"name\":\"valid_from\",\"type\":\"string\"},{\"name\":\"valid_to\",\"type\":\"string\"},{\"name\":\"status\",\"type\":{\"name\":\"SigningResultStatus\",\"symbols\":[\"ok\",\"invalid_issuer\",\"error\"],\"type\":\"enum\"}},{\"doc\":\"contains METADATA\",\"name\":\"associated_data\",\"type\":\"bytes\"}],\"name\":\"brave.cbp.SigningResult\",\"type\":\"record\"}"
 }
 
 func (r SigningResult) SchemaName() string {
@@ -130,11 +142,21 @@ func (r *SigningResult) Get(i int) types.Field {
 		return w
 
 	case 3:
-		w := SigningResultStatusWrapper{Target: &r.Status}
+		w := types.String{Target: &r.Valid_from}
 
 		return w
 
 	case 4:
+		w := types.String{Target: &r.Valid_to}
+
+		return w
+
+	case 5:
+		w := SigningResultStatusWrapper{Target: &r.Status}
+
+		return w
+
+	case 6:
 		w := BytesWrapper{Target: &r.Associated_data}
 
 		return w
@@ -176,6 +198,14 @@ func (r SigningResult) MarshalJSON() ([]byte, error) {
 		return nil, err
 	}
 	output["proof"], err = json.Marshal(r.Proof)
+	if err != nil {
+		return nil, err
+	}
+	output["valid_from"], err = json.Marshal(r.Valid_from)
+	if err != nil {
+		return nil, err
+	}
+	output["valid_to"], err = json.Marshal(r.Valid_to)
 	if err != nil {
 		return nil, err
 	}
@@ -238,6 +268,34 @@ func (r *SigningResult) UnmarshalJSON(data []byte) error {
 		}
 	} else {
 		return fmt.Errorf("no value specified for proof")
+	}
+	val = func() json.RawMessage {
+		if v, ok := fields["valid_from"]; ok {
+			return v
+		}
+		return nil
+	}()
+
+	if val != nil {
+		if err := json.Unmarshal([]byte(val), &r.Valid_from); err != nil {
+			return err
+		}
+	} else {
+		return fmt.Errorf("no value specified for valid_from")
+	}
+	val = func() json.RawMessage {
+		if v, ok := fields["valid_to"]; ok {
+			return v
+		}
+		return nil
+	}()
+
+	if val != nil {
+		if err := json.Unmarshal([]byte(val), &r.Valid_to); err != nil {
+			return err
+		}
+	} else {
+		return fmt.Errorf("no value specified for valid_to")
 	}
 	val = func() json.RawMessage {
 		if v, ok := fields["status"]; ok {

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"time"
 
 	crypto "github.com/brave-intl/challenge-bypass-ristretto-ffi"
 	avroSchema "github.com/brave-intl/challenge-bypass-server/avro/generated"
@@ -120,9 +121,15 @@ OUTER:
 			var numT = len(request.Blinded_tokens) / (issuer.Buffer + issuer.Overlap)
 			// sign tokens with all the keys in buffer+overlap
 			for i := issuer.Buffer + issuer.Overlap; i > 0; i-- {
-				var signingKey *crypto.SigningKey
+				var (
+					signingKey *crypto.SigningKey
+					validFrom  string
+					validTo    string
+				)
 				if len(issuer.Keys) > i {
 					signingKey = issuer.Keys[len(issuer.Keys)-i].SigningKey
+					validFrom = issuer.Keys[len(issuer.Keys)-i].ValidFrom.Format(time.RFC3339)
+					validTo = issuer.Keys[len(issuer.Keys)-i].ValidTo.Format(time.RFC3339)
 				}
 
 				// @TODO: If one token fails they will all fail. Assess this behavior
@@ -165,6 +172,8 @@ OUTER:
 					Signed_tokens:     marshaledTokens,
 					Proof:             string(marshaledDLEQProof),
 					Issuer_public_key: string(marshaledPublicKey),
+					Valid_from:        validFrom,
+					Valid_to:          validTo,
 					Status:            issuerOk,
 					Associated_data:   request.Associated_data,
 				})
@@ -212,18 +221,12 @@ OUTER:
 				return fmt.Errorf("error could not marshal signing key: %w", err)
 			}
 
-			// update associated data with additional fields
-			enrichedAssociatedData, err := enrichAssociatedData(request.Associated_data, issuer)
-			if err != nil {
-				return fmt.Errorf("error enriching associated data: %w", err)
-			}
-
 			blindedTokenResults = append(blindedTokenResults, avroSchema.SigningResult{
 				Signed_tokens:     marshaledTokens,
 				Proof:             string(marshaledDLEQProof),
 				Issuer_public_key: string(marshaledPublicKey),
 				Status:            issuerOk,
-				Associated_data:   enrichedAssociatedData,
+				Associated_data:   request.Associated_data,
 			})
 		}
 	}
