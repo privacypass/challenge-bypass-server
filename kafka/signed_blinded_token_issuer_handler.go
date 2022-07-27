@@ -7,8 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"time"
 
 	crypto "github.com/brave-intl/challenge-bypass-ristretto-ffi"
+	"github.com/brave-intl/challenge-bypass-server/avro/generated"
 	avroSchema "github.com/brave-intl/challenge-bypass-server/avro/generated"
 	"github.com/brave-intl/challenge-bypass-server/btd"
 	cbpServer "github.com/brave-intl/challenge-bypass-server/server"
@@ -34,7 +36,7 @@ func SignedBlindedTokenIssuerHandler(data []byte, producer *kafka.Writer, server
 
 	logger := log.With().Str("request_id", blindedTokenRequestSet.Request_id).Logger()
 
-	var blindedTokenResults []avroSchema.SigningResult
+	var blindedTokenResults []avroSchema.SigningResultV2
 	if len(blindedTokenRequestSet.Data) > 1 {
 		// NOTE: When we start supporting multiple requests we will need to review
 		// errors and return values as well.
@@ -47,7 +49,7 @@ OUTER:
 	for _, request := range blindedTokenRequestSet.Data {
 		if request.Blinded_tokens == nil {
 			logger.Error().Err(errors.New("blinded tokens is empty")).Msg("")
-			blindedTokenResults = append(blindedTokenResults, avroSchema.SigningResult{
+			blindedTokenResults = append(blindedTokenResults, avroSchema.SigningResultV2{
 				Signed_tokens:     nil,
 				Issuer_public_key: "",
 				Status:            issuerError,
@@ -59,7 +61,7 @@ OUTER:
 		// check to see if issuer cohort will overflow
 		if request.Issuer_cohort > math.MaxInt16 || request.Issuer_cohort < math.MinInt16 {
 			logger.Error().Msg("invalid cohort")
-			blindedTokenResults = append(blindedTokenResults, avroSchema.SigningResult{
+			blindedTokenResults = append(blindedTokenResults, avroSchema.SigningResultV2{
 				Signed_tokens:     nil,
 				Issuer_public_key: "",
 				Status:            issuerError,
@@ -71,7 +73,7 @@ OUTER:
 		issuer, appErr := server.GetLatestIssuer(request.Issuer_type, int16(request.Issuer_cohort))
 		if appErr != nil {
 			logger.Error().Err(appErr).Msg("error retrieving issuer")
-			blindedTokenResults = append(blindedTokenResults, avroSchema.SigningResult{
+			blindedTokenResults = append(blindedTokenResults, avroSchema.SigningResultV2{
 				Signed_tokens:     nil,
 				Issuer_public_key: "",
 				Status:            issuerInvalid,
@@ -84,7 +86,7 @@ OUTER:
 		if issuer.Version == 3 && issuer.Buffer > 1 {
 			if len(request.Blinded_tokens)%(issuer.Buffer+issuer.Overlap) != 0 {
 				logger.Error().Err(errors.New("error request contains invalid number of blinded tokens")).Msg("")
-				blindedTokenResults = append(blindedTokenResults, avroSchema.SigningResult{
+				blindedTokenResults = append(blindedTokenResults, avroSchema.SigningResultV2{
 					Signed_tokens:     nil,
 					Issuer_public_key: "",
 					Status:            issuerError,
@@ -103,7 +105,7 @@ OUTER:
 			if err != nil {
 				logger.Error().Err(fmt.Errorf("failed to unmarshal blinded tokens: %w", err)).
 					Msg("signed blinded token issuer handler")
-				blindedTokenResults = append(blindedTokenResults, avroSchema.SigningResult{
+				blindedTokenResults = append(blindedTokenResults, avroSchema.SigningResultV2{
 					Signed_tokens:     nil,
 					Issuer_public_key: "",
 					Status:            issuerError,
@@ -120,9 +122,15 @@ OUTER:
 			var numT = len(request.Blinded_tokens) / (issuer.Buffer + issuer.Overlap)
 			// sign tokens with all the keys in buffer+overlap
 			for i := issuer.Buffer + issuer.Overlap; i > 0; i-- {
-				var signingKey *crypto.SigningKey
+				var (
+					signingKey *crypto.SigningKey
+					validFrom  string
+					validTo    string
+				)
 				if len(issuer.Keys) > i {
 					signingKey = issuer.Keys[len(issuer.Keys)-i].SigningKey
+					validFrom = issuer.Keys[len(issuer.Keys)-i].StartAt.Format(time.RFC3339)
+					validTo = issuer.Keys[len(issuer.Keys)-i].EndAt.Format(time.RFC3339)
 				}
 
 				// @TODO: If one token fails they will all fail. Assess this behavior
@@ -130,7 +138,7 @@ OUTER:
 				if err != nil {
 					logger.Error().Err(fmt.Errorf("error could not approve new tokens: %w", err)).
 						Msg("signed blinded token issuer handler")
-					blindedTokenResults = append(blindedTokenResults, avroSchema.SigningResult{
+					blindedTokenResults = append(blindedTokenResults, avroSchema.SigningResultV2{
 						Signed_tokens:     nil,
 						Issuer_public_key: "",
 						Status:            issuerError,
@@ -161,10 +169,12 @@ OUTER:
 						blindedTokenRequestSet.Request_id, err)
 				}
 
-				blindedTokenResults = append(blindedTokenResults, avroSchema.SigningResult{
+				blindedTokenResults = append(blindedTokenResults, avroSchema.SigningResultV2{
 					Signed_tokens:     marshaledTokens,
 					Proof:             string(marshaledDLEQProof),
 					Issuer_public_key: string(marshaledPublicKey),
+					Valid_from:        &generated.UnionNullString{String: validFrom},
+					Valid_to:          &generated.UnionNullString{String: validTo},
 					Status:            issuerOk,
 					Associated_data:   request.Associated_data,
 				})
@@ -182,7 +192,7 @@ OUTER:
 				logger.Error().
 					Err(fmt.Errorf("error could not approve new tokens: %w", err)).
 					Msg("signed blinded token issuer handler")
-				blindedTokenResults = append(blindedTokenResults, avroSchema.SigningResult{
+				blindedTokenResults = append(blindedTokenResults, avroSchema.SigningResultV2{
 					Signed_tokens:     nil,
 					Issuer_public_key: "",
 					Status:            issuerError,
@@ -212,23 +222,17 @@ OUTER:
 				return fmt.Errorf("error could not marshal signing key: %w", err)
 			}
 
-			// update associated data with additional fields
-			enrichedAssociatedData, err := enrichAssociatedData(request.Associated_data, issuer)
-			if err != nil {
-				return fmt.Errorf("error enriching associated data: %w", err)
-			}
-
-			blindedTokenResults = append(blindedTokenResults, avroSchema.SigningResult{
+			blindedTokenResults = append(blindedTokenResults, avroSchema.SigningResultV2{
 				Signed_tokens:     marshaledTokens,
 				Proof:             string(marshaledDLEQProof),
 				Issuer_public_key: string(marshaledPublicKey),
 				Status:            issuerOk,
-				Associated_data:   enrichedAssociatedData,
+				Associated_data:   request.Associated_data,
 			})
 		}
 	}
 
-	resultSet := avroSchema.SigningResultSet{
+	resultSet := avroSchema.SigningResultV2Set{
 		Request_id: blindedTokenRequestSet.Request_id,
 		Data:       blindedTokenResults,
 	}
@@ -237,7 +241,7 @@ OUTER:
 	err = resultSet.Serialize(&resultSetBuffer)
 	if err != nil {
 		return fmt.Errorf("request %s: failed to serialize result set: %s: %w",
-			blindedTokenRequestSet.Request_id, resultSet, err)
+			blindedTokenRequestSet.Request_id, resultSetBuffer.String(), err)
 	}
 
 	err = Emit(producer, resultSetBuffer.Bytes(), log)

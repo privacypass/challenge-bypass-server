@@ -13,8 +13,10 @@ CREATE TABLE v3_issuers(
     redemption_repository text not null default 'dynamodb',
     version integer default 3,
     max_tokens integer default 40,
-    duration text default null
+    duration text default null,
+    constraint issuer_type_uniq unique (issuer_type)
 );
+
 
 -- v3_issuer_keys - holds all sign/redeem keys for issuers v3
 CREATE TABLE v3_issuer_keys (

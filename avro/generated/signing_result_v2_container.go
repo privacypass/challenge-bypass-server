@@ -17,37 +17,37 @@ import (
 	"github.com/actgardner/gogen-avro/v10/vm"
 )
 
-func NewSigningRequestWriter(writer io.Writer, codec container.Codec, recordsPerBlock int64) (*container.Writer, error) {
-	str := NewSigningRequest()
+func NewSigningResultV2Writer(writer io.Writer, codec container.Codec, recordsPerBlock int64) (*container.Writer, error) {
+	str := NewSigningResultV2()
 	return container.NewWriter(writer, codec, recordsPerBlock, str.Schema())
 }
 
 // container reader
-type SigningRequestReader struct {
+type SigningResultV2Reader struct {
 	r io.Reader
 	p *vm.Program
 }
 
-func NewSigningRequestReader(r io.Reader) (*SigningRequestReader, error) {
+func NewSigningResultV2Reader(r io.Reader) (*SigningResultV2Reader, error) {
 	containerReader, err := container.NewReader(r)
 	if err != nil {
 		return nil, err
 	}
 
-	t := NewSigningRequest()
+	t := NewSigningResultV2()
 	deser, err := compiler.CompileSchemaBytes([]byte(containerReader.AvroContainerSchema()), []byte(t.Schema()))
 	if err != nil {
 		return nil, err
 	}
 
-	return &SigningRequestReader{
+	return &SigningResultV2Reader{
 		r: containerReader,
 		p: deser,
 	}, nil
 }
 
-func (r SigningRequestReader) Read() (SigningRequest, error) {
-	t := NewSigningRequest()
+func (r SigningResultV2Reader) Read() (SigningResultV2, error) {
+	t := NewSigningResultV2()
 	err := vm.Eval(r.r, r.p, &t)
 	return t, err
 }

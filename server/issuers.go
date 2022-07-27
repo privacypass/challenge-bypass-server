@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"os"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"github.com/brave-intl/bat-go/utils/handlers"
 	crypto "github.com/brave-intl/challenge-bypass-ristretto-ffi"
 	"github.com/go-chi/chi"
+	"github.com/lib/pq"
 	"github.com/pressly/lg"
 )
 
@@ -226,6 +228,18 @@ func (c *Server) issuerV3CreateHandler(w http.ResponseWriter, r *http.Request) *
 		Duration:     req.Duration,
 	}); err != nil {
 		log.Errorf("%s", err)
+
+		var pqErr *pq.Error
+		if errors.As(err, pqErr) {
+			if pqErr.Code == "23505" { // unique violation
+				return &handlers.AppError{
+					Cause:   err,
+					Message: "Could not create new issuer",
+					Code:    303, // there already exists an issuer
+				}
+			}
+		}
+
 		return &handlers.AppError{
 			Cause:   err,
 			Message: "Could not create new issuer",
@@ -268,7 +282,20 @@ func (c *Server) issuerCreateHandlerV2(w http.ResponseWriter, r *http.Request) *
 	}
 
 	if err := c.createIssuerV2(req.Name, req.Cohort, req.MaxTokens, req.ExpiresAt); err != nil {
+		// if this is a duplicate on a constraint we already inserted it
 		log.Errorf("%s", err)
+
+		var pqErr *pq.Error
+		if errors.As(err, pqErr) {
+			if pqErr.Code == "23505" { // unique violation
+				return &handlers.AppError{
+					Cause:   err,
+					Message: "Could not create new issuer",
+					Code:    303, // there already exists an issuer
+				}
+			}
+		}
+
 		return &handlers.AppError{
 			Cause:   err,
 			Message: "Could not create new issuer",
@@ -312,6 +339,18 @@ func (c *Server) issuerCreateHandlerV1(w http.ResponseWriter, r *http.Request) *
 
 	if err := c.createIssuer(req.Name, req.Cohort, req.MaxTokens, req.ExpiresAt); err != nil {
 		log.Errorf("%s", err)
+
+		var pqErr *pq.Error
+		if errors.As(err, pqErr) {
+			if pqErr.Code == "23505" { // unique violation
+				return &handlers.AppError{
+					Cause:   err,
+					Message: "Could not create new issuer",
+					Code:    303, // there already exists an issuer
+				}
+			}
+		}
+
 		return &handlers.AppError{
 			Cause:   err,
 			Message: "Could not create new issuer",
