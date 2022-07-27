@@ -235,7 +235,7 @@ func (c *Server) issuerV3CreateHandler(w http.ResponseWriter, r *http.Request) *
 				return &handlers.AppError{
 					Cause:   err,
 					Message: "Could not create new issuer",
-					Code:    409,
+					Code:    303, // there already exists an issuer
 				}
 			}
 		}
@@ -291,7 +291,7 @@ func (c *Server) issuerCreateHandlerV2(w http.ResponseWriter, r *http.Request) *
 				return &handlers.AppError{
 					Cause:   err,
 					Message: "Could not create new issuer",
-					Code:    409,
+					Code:    303, // there already exists an issuer
 				}
 			}
 		}
@@ -346,7 +346,7 @@ func (c *Server) issuerCreateHandlerV1(w http.ResponseWriter, r *http.Request) *
 				return &handlers.AppError{
 					Cause:   err,
 					Message: "Could not create new issuer",
-					Code:    409,
+					Code:    303, // there already exists an issuer
 				}
 			}
 		}
