@@ -23,25 +23,27 @@ var _ = fmt.Printf
 type SigningResult struct {
 	Signed_tokens []string `json:"signed_tokens"`
 
-	Issuer_public_key string `json:"public_key"`
+	Issuer_public_key string `json:"issuer_public_key"`
 
 	Proof string `json:"proof"`
 
-	Valid_from string `json:"valid_from"`
+	Valid_from *UnionNullString `json:"valid_from"`
 
-	Valid_to string `json:"valid_to"`
+	Valid_to *UnionNullString `json:"valid_to"`
 
 	Status SigningResultStatus `json:"status"`
 	// contains METADATA
 	Associated_data Bytes `json:"associated_data"`
 }
 
-const SigningResultAvroCRC64Fingerprint = "\x93a/D\xaa\xa4\xea\xc7"
+const SigningResultAvroCRC64Fingerprint = "v\x9f\x8b\xf6\x05\x9f\xe5\xd9"
 
 func NewSigningResult() SigningResult {
 	r := SigningResult{}
 	r.Signed_tokens = make([]string, 0)
 
+	r.Valid_from = nil
+	r.Valid_to = nil
 	return r
 }
 
@@ -82,11 +84,11 @@ func writeSigningResult(r SigningResult, w io.Writer) error {
 	if err != nil {
 		return err
 	}
-	err = vm.WriteString(r.Valid_from, w)
+	err = writeUnionNullString(r.Valid_from, w)
 	if err != nil {
 		return err
 	}
-	err = vm.WriteString(r.Valid_to, w)
+	err = writeUnionNullString(r.Valid_to, w)
 	if err != nil {
 		return err
 	}
@@ -106,7 +108,7 @@ func (r SigningResult) Serialize(w io.Writer) error {
 }
 
 func (r SigningResult) Schema() string {
-	return "{\"fields\":[{\"name\":\"signed_tokens\",\"type\":{\"items\":{\"name\":\"signed_token\",\"type\":\"string\"},\"type\":\"array\"}},{\"name\":\"public_key\",\"type\":\"string\"},{\"name\":\"proof\",\"type\":\"string\"},{\"name\":\"valid_from\",\"type\":\"string\"},{\"name\":\"valid_to\",\"type\":\"string\"},{\"name\":\"status\",\"type\":{\"name\":\"SigningResultStatus\",\"symbols\":[\"ok\",\"invalid_issuer\",\"error\"],\"type\":\"enum\"}},{\"doc\":\"contains METADATA\",\"name\":\"associated_data\",\"type\":\"bytes\"}],\"name\":\"brave.cbp.SigningResult\",\"type\":\"record\"}"
+	return "{\"fields\":[{\"name\":\"signed_tokens\",\"type\":{\"items\":{\"name\":\"signed_token\",\"type\":\"string\"},\"type\":\"array\"}},{\"name\":\"public_key\",\"type\":\"string\"},{\"name\":\"proof\",\"type\":\"string\"},{\"default\":null,\"name\":\"valid_from\",\"type\":[\"null\",\"string\"]},{\"default\":null,\"name\":\"valid_to\",\"type\":[\"null\",\"string\"]},{\"name\":\"status\",\"type\":{\"name\":\"SigningResultStatus\",\"symbols\":[\"ok\",\"invalid_issuer\",\"error\"],\"type\":\"enum\"}},{\"doc\":\"contains METADATA\",\"name\":\"associated_data\",\"type\":\"bytes\"}],\"name\":\"brave.cbp.SigningResult\",\"type\":\"record\"}"
 }
 
 func (r SigningResult) SchemaName() string {
@@ -142,15 +144,13 @@ func (r *SigningResult) Get(i int) types.Field {
 		return w
 
 	case 3:
-		w := types.String{Target: &r.Valid_from}
+		r.Valid_from = NewUnionNullString()
 
-		return w
-
+		return r.Valid_from
 	case 4:
-		w := types.String{Target: &r.Valid_to}
+		r.Valid_to = NewUnionNullString()
 
-		return w
-
+		return r.Valid_to
 	case 5:
 		w := SigningResultStatusWrapper{Target: &r.Status}
 
@@ -167,12 +167,24 @@ func (r *SigningResult) Get(i int) types.Field {
 
 func (r *SigningResult) SetDefault(i int) {
 	switch i {
+	case 3:
+		r.Valid_from = nil
+		return
+	case 4:
+		r.Valid_to = nil
+		return
 	}
 	panic("Unknown field index")
 }
 
 func (r *SigningResult) NullField(i int) {
 	switch i {
+	case 3:
+		r.Valid_from = nil
+		return
+	case 4:
+		r.Valid_to = nil
+		return
 	}
 	panic("Not a nullable field index")
 }
@@ -281,7 +293,9 @@ func (r *SigningResult) UnmarshalJSON(data []byte) error {
 			return err
 		}
 	} else {
-		return fmt.Errorf("no value specified for valid_from")
+		r.Valid_from = NewUnionNullString()
+
+		r.Valid_from = nil
 	}
 	val = func() json.RawMessage {
 		if v, ok := fields["valid_to"]; ok {
@@ -295,7 +309,9 @@ func (r *SigningResult) UnmarshalJSON(data []byte) error {
 			return err
 		}
 	} else {
-		return fmt.Errorf("no value specified for valid_to")
+		r.Valid_to = NewUnionNullString()
+
+		r.Valid_to = nil
 	}
 	val = func() json.RawMessage {
 		if v, ok := fields["status"]; ok {
