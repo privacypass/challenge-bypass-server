@@ -10,6 +10,7 @@ import (
 	"time"
 
 	crypto "github.com/brave-intl/challenge-bypass-ristretto-ffi"
+	"github.com/brave-intl/challenge-bypass-server/avro/generated"
 	avroSchema "github.com/brave-intl/challenge-bypass-server/avro/generated"
 	"github.com/brave-intl/challenge-bypass-server/btd"
 	cbpServer "github.com/brave-intl/challenge-bypass-server/server"
@@ -128,8 +129,8 @@ OUTER:
 				)
 				if len(issuer.Keys) > i {
 					signingKey = issuer.Keys[len(issuer.Keys)-i].SigningKey
-					validFrom = issuer.Keys[len(issuer.Keys)-i].ValidFrom.Format(time.RFC3339)
-					validTo = issuer.Keys[len(issuer.Keys)-i].ValidTo.Format(time.RFC3339)
+					validFrom = issuer.Keys[len(issuer.Keys)-i].StartAt.Format(time.RFC3339)
+					validTo = issuer.Keys[len(issuer.Keys)-i].EndAt.Format(time.RFC3339)
 				}
 
 				// @TODO: If one token fails they will all fail. Assess this behavior
@@ -172,8 +173,8 @@ OUTER:
 					Signed_tokens:     marshaledTokens,
 					Proof:             string(marshaledDLEQProof),
 					Issuer_public_key: string(marshaledPublicKey),
-					Valid_from:        validFrom,
-					Valid_to:          validTo,
+					Valid_from:        &generated.UnionNullString{String: validFrom},
+					Valid_to:          &generated.UnionNullString{String: validTo},
 					Status:            issuerOk,
 					Associated_data:   request.Associated_data,
 				})
