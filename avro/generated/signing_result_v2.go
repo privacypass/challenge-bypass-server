@@ -109,7 +109,7 @@ func (r SigningResultV2) Serialize(w io.Writer) error {
 }
 
 func (r SigningResultV2) Schema() string {
-	return "{\"fields\":[{\"name\":\"signed_tokens\",\"type\":{\"items\":{\"name\":\"signed_token\",\"type\":\"string\"},\"type\":\"array\"}},{\"name\":\"public_key\",\"type\":\"string\"},{\"name\":\"proof\",\"type\":\"string\"},{\"default\":null,\"name\":\"valid_from\",\"type\":[\"null\",\"string\"]},{\"default\":null,\"name\":\"valid_to\",\"type\":[\"null\",\"string\"]},{\"name\":\"status\",\"type\":{\"name\":\"SigningResultV2Status\",\"symbols\":[\"ok\",\"invalid_issuer\",\"error\"],\"type\":\"enum\"}},{\"doc\":\"contains METADATA\",\"name\":\"associated_data\",\"type\":\"bytes\"}],\"name\":\"brave.cbp.SigningResultV2\",\"type\":\"record\"}"
+	return "{\"fields\":[{\"name\":\"signed_tokens\",\"type\":{\"items\":{\"name\":\"signed_token\",\"type\":\"string\"},\"type\":\"array\"}},{\"name\":\"issuer_public_key\",\"type\":\"string\"},{\"name\":\"proof\",\"type\":\"string\"},{\"default\":null,\"name\":\"valid_from\",\"type\":[\"null\",\"string\"]},{\"default\":null,\"name\":\"valid_to\",\"type\":[\"null\",\"string\"]},{\"name\":\"status\",\"type\":{\"name\":\"SigningResultV2Status\",\"symbols\":[\"ok\",\"invalid_issuer\",\"error\"],\"type\":\"enum\"}},{\"doc\":\"contains METADATA\",\"name\":\"associated_data\",\"type\":\"bytes\"}],\"name\":\"brave.cbp.SigningResultV2\",\"type\":\"record\"}"
 }
 
 func (r SigningResultV2) SchemaName() string {
@@ -206,7 +206,7 @@ func (r SigningResultV2) MarshalJSON() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	output["public_key"], err = json.Marshal(r.Issuer_public_key)
+	output["issuer_public_key"], err = json.Marshal(r.Issuer_public_key)
 	if err != nil {
 		return nil, err
 	}
@@ -255,7 +255,7 @@ func (r *SigningResultV2) UnmarshalJSON(data []byte) error {
 		return fmt.Errorf("no value specified for signed_tokens")
 	}
 	val = func() json.RawMessage {
-		if v, ok := fields["public_key"]; ok {
+		if v, ok := fields["issuer_public_key"]; ok {
 			return v
 		}
 		return nil

@@ -95,7 +95,7 @@ func (r SigningResultV1) Serialize(w io.Writer) error {
 }
 
 func (r SigningResultV1) Schema() string {
-	return "{\"fields\":[{\"name\":\"signed_tokens\",\"type\":{\"items\":{\"name\":\"signed_token\",\"type\":\"string\"},\"type\":\"array\"}},{\"name\":\"public_key\",\"type\":\"string\"},{\"name\":\"proof\",\"type\":\"string\"},{\"name\":\"status\",\"type\":{\"name\":\"SigningResultV1Status\",\"symbols\":[\"ok\",\"invalid_issuer\",\"error\"],\"type\":\"enum\"}},{\"doc\":\"contains METADATA\",\"name\":\"associated_data\",\"type\":\"bytes\"}],\"name\":\"brave.cbp.SigningResultV1\",\"type\":\"record\"}"
+	return "{\"fields\":[{\"name\":\"signed_tokens\",\"type\":{\"items\":{\"name\":\"signed_token\",\"type\":\"string\"},\"type\":\"array\"}},{\"name\":\"issuer_public_key\",\"type\":\"string\"},{\"name\":\"proof\",\"type\":\"string\"},{\"name\":\"status\",\"type\":{\"name\":\"SigningResultV1Status\",\"symbols\":[\"ok\",\"invalid_issuer\",\"error\"],\"type\":\"enum\"}},{\"doc\":\"contains METADATA\",\"name\":\"associated_data\",\"type\":\"bytes\"}],\"name\":\"brave.cbp.SigningResultV1\",\"type\":\"record\"}"
 }
 
 func (r SigningResultV1) SchemaName() string {
@@ -172,7 +172,7 @@ func (r SigningResultV1) MarshalJSON() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	output["public_key"], err = json.Marshal(r.Issuer_public_key)
+	output["issuer_public_key"], err = json.Marshal(r.Issuer_public_key)
 	if err != nil {
 		return nil, err
 	}
@@ -213,7 +213,7 @@ func (r *SigningResultV1) UnmarshalJSON(data []byte) error {
 		return fmt.Errorf("no value specified for signed_tokens")
 	}
 	val = func() json.RawMessage {
-		if v, ok := fields["public_key"]; ok {
+		if v, ok := fields["issuer_public_key"]; ok {
 			return v
 		}
 		return nil
