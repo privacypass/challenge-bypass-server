@@ -11,10 +11,10 @@ func TestOriginalAvroNewSchema(t *testing.T) {
 
 	buf := bytes.NewBuffer([]byte{})
 
-	orig := &OriginalSigningResult{
+	orig := &avroSchema.OriginalSigningResult{
 		Signed_tokens:     []string{"signed token"},
-		Issuer_public_key: string{"issuer public key"},
-		Proof:             string{"proof"},
+		Issuer_public_key: "issuer public key",
+		Proof:             "proof",
 	}
 
 	if err := orig.Serialize(buf); err != nil {
@@ -23,7 +23,7 @@ func TestOriginalAvroNewSchema(t *testing.T) {
 	}
 
 	newSigningResult, err := avroSchema.DeserializeOriginalSigningResult(buf)
-	if err := orig.Serialize(buf); err != nil {
+	if err != nil {
 		t.Error("failed to deserialize into new message type: ", err)
 		return
 	}
