@@ -241,7 +241,7 @@ OUTER:
 	err = resultSet.Serialize(&resultSetBuffer)
 	if err != nil {
 		return fmt.Errorf("request %s: failed to serialize result set: %s: %w",
-			blindedTokenRequestSet.Request_id, resultSet, err)
+			blindedTokenRequestSet.Request_id, resultSetBuffer.String(), err)
 	}
 
 	err = Emit(producer, resultSetBuffer.Bytes(), log)
