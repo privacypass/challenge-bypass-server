@@ -194,8 +194,6 @@ func (c *Server) issuerGetAllHandler(w http.ResponseWriter, r *http.Request) *ha
 
 // issuerV3CreateHandler - creation of a time aware issuer
 func (c *Server) issuerV3CreateHandler(w http.ResponseWriter, r *http.Request) *handlers.AppError {
-	log := lg.Log(r.Context())
-
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxRequestSize))
 	var req issuerV3CreateRequest
 	if err := decoder.Decode(&req); err != nil {
@@ -227,15 +225,14 @@ func (c *Server) issuerV3CreateHandler(w http.ResponseWriter, r *http.Request) *
 		ValidFrom:    req.ValidFrom,
 		Duration:     req.Duration,
 	}); err != nil {
-		log.Errorf("%s", err)
 
 		var pqErr *pq.Error
-		if errors.As(err, pqErr) {
+		if errors.As(err, &pqErr) {
 			if pqErr.Code == "23505" { // unique violation
 				return &handlers.AppError{
 					Cause:   err,
 					Message: "Could not create new issuer",
-					Code:    303, // there already exists an issuer
+					Code:    http.StatusConflict, // there already exists an issuer
 				}
 			}
 		}
@@ -286,12 +283,12 @@ func (c *Server) issuerCreateHandlerV2(w http.ResponseWriter, r *http.Request) *
 		log.Errorf("%s", err)
 
 		var pqErr *pq.Error
-		if errors.As(err, pqErr) {
+		if errors.As(err, &pqErr) {
 			if pqErr.Code == "23505" { // unique violation
 				return &handlers.AppError{
 					Cause:   err,
 					Message: "Could not create new issuer",
-					Code:    303, // there already exists an issuer
+					Code:    http.StatusConflict, // there already exists an issuer
 				}
 			}
 		}
@@ -341,12 +338,12 @@ func (c *Server) issuerCreateHandlerV1(w http.ResponseWriter, r *http.Request) *
 		log.Errorf("%s", err)
 
 		var pqErr *pq.Error
-		if errors.As(err, pqErr) {
+		if errors.As(err, &pqErr) {
 			if pqErr.Code == "23505" { // unique violation
 				return &handlers.AppError{
 					Cause:   err,
 					Message: "Could not create new issuer",
-					Code:    303, // there already exists an issuer
+					Code:    http.StatusConflict, // there already exists an issuer
 				}
 			}
 		}
