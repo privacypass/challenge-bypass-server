@@ -2,8 +2,6 @@ package kafka
 
 import (
 	"bytes"
-	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -117,7 +115,7 @@ OUTER:
 		}
 
 		// if the issuer is time aware, we need to approve tokens
-		if issuer.Version == 3 && issuer.Buffer > 1 {
+		if issuer.Version == 3 && issuer.Buffer > 0 {
 			// number of tokens per signing key
 			var numT = len(request.Blinded_tokens) / (issuer.Buffer + issuer.Overlap)
 			// sign tokens with all the keys in buffer+overlap
@@ -127,12 +125,9 @@ OUTER:
 					validFrom  string
 					validTo    string
 				)
-				if len(issuer.Keys) > i {
-					signingKey = issuer.Keys[len(issuer.Keys)-i].SigningKey
-					validFrom = issuer.Keys[len(issuer.Keys)-i].StartAt.Format(time.RFC3339)
-					validTo = issuer.Keys[len(issuer.Keys)-i].EndAt.Format(time.RFC3339)
-				}
-
+				signingKey = issuer.Keys[len(issuer.Keys)-i].SigningKey
+				validFrom = issuer.Keys[len(issuer.Keys)-i].StartAt.Format(time.RFC3339)
+				validTo = issuer.Keys[len(issuer.Keys)-i].EndAt.Format(time.RFC3339)
 				// @TODO: If one token fails they will all fail. Assess this behavior
 				signedTokens, dleqProof, err := btd.ApproveTokens(blindedTokens[(i-numT):i], signingKey)
 				if err != nil {
@@ -173,8 +168,8 @@ OUTER:
 					Signed_tokens:     marshaledTokens,
 					Proof:             string(marshaledDLEQProof),
 					Issuer_public_key: string(marshaledPublicKey),
-					Valid_from:        &generated.UnionNullString{String: validFrom},
-					Valid_to:          &generated.UnionNullString{String: validTo},
+					Valid_from:        &generated.UnionNullString{String: validFrom, UnionType: generated.UnionNullStringTypeEnumString},
+					Valid_to:          &generated.UnionNullString{String: validTo, UnionType: generated.UnionNullStringTypeEnumString},
 					Status:            issuerOk,
 					Associated_data:   request.Associated_data,
 				})
@@ -251,30 +246,4 @@ OUTER:
 	}
 
 	return nil
-}
-
-// enrichAssociatedData enrich the associated data with extra fields.
-func enrichAssociatedData(associatedData []byte, issuer *cbpServer.Issuer) ([]byte, error) {
-	decodedBytes, err := base64.StdEncoding.DecodeString(string(associatedData))
-	if err != nil {
-		return nil, fmt.Errorf("error could not base64 decode associated data: %w", err)
-	}
-
-	var enrichedData map[string]string
-	err = json.Unmarshal(decodedBytes, &enrichedData)
-	if err != nil {
-		return nil, fmt.Errorf("error decoding associated data: %w", err)
-	}
-
-	enrichedData["valid_from"] = issuer.ValidFrom.String()
-	enrichedData["valid_to"] = issuer.ExpiresAt.String()
-
-	encodedBytes, err := json.Marshal(enrichedData)
-	if err != nil {
-		return nil, fmt.Errorf("error encoding enriched data: %w", err)
-	}
-
-	encodedString := base64.StdEncoding.EncodeToString(encodedBytes)
-
-	return []byte(encodedString), nil
 }
