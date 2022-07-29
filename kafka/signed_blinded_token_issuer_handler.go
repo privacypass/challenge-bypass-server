@@ -8,7 +8,6 @@ import (
 	"time"
 
 	crypto "github.com/brave-intl/challenge-bypass-ristretto-ffi"
-	"github.com/brave-intl/challenge-bypass-server/avro/generated"
 	avroSchema "github.com/brave-intl/challenge-bypass-server/avro/generated"
 	"github.com/brave-intl/challenge-bypass-server/btd"
 	cbpServer "github.com/brave-intl/challenge-bypass-server/server"
@@ -81,7 +80,7 @@ OUTER:
 		}
 
 		// if this is a time aware issuer, make sure the request contains the appropriate number of blinded tokens
-		if issuer.Version == 3 && issuer.Buffer > 1 {
+		if issuer.Version == 3 && issuer.Buffer > 0 {
 			if len(request.Blinded_tokens)%(issuer.Buffer+issuer.Overlap) != 0 {
 				logger.Error().Err(errors.New("error request contains invalid number of blinded tokens")).Msg("")
 				blindedTokenResults = append(blindedTokenResults, avroSchema.SigningResultV2{
@@ -168,8 +167,8 @@ OUTER:
 					Signed_tokens:     marshaledTokens,
 					Proof:             string(marshaledDLEQProof),
 					Issuer_public_key: string(marshaledPublicKey),
-					Valid_from:        &generated.UnionNullString{String: validFrom, UnionType: generated.UnionNullStringTypeEnumString},
-					Valid_to:          &generated.UnionNullString{String: validTo, UnionType: generated.UnionNullStringTypeEnumString},
+					Valid_from:        &avroSchema.UnionNullString{String: validFrom, UnionType: avroSchema.UnionNullStringTypeEnumString},
+					Valid_to:          &avroSchema.UnionNullString{String: validTo, UnionType: avroSchema.UnionNullStringTypeEnumString},
 					Status:            issuerOk,
 					Associated_data:   request.Associated_data,
 				})
