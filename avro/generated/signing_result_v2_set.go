@@ -28,7 +28,7 @@ type SigningResultV2Set struct {
 	Data []SigningResultV2 `json:"data"`
 }
 
-const SigningResultV2SetAvroCRC64Fingerprint = "\n\x1e\xa8\xd8\xc4~\xc9\xf9"
+const SigningResultV2SetAvroCRC64Fingerprint = "\xaf\xf0\x05y\x01Y\xcdg"
 
 func NewSigningResultV2Set() SigningResultV2Set {
 	r := SigningResultV2Set{}
@@ -78,7 +78,7 @@ func (r SigningResultV2Set) Serialize(w io.Writer) error {
 }
 
 func (r SigningResultV2Set) Schema() string {
-	return "{\"doc\":\"Top level request containing the data to be processed, as well as any top level metadata for this message.\",\"fields\":[{\"name\":\"request_id\",\"type\":\"string\"},{\"name\":\"data\",\"type\":{\"items\":{\"fields\":[{\"name\":\"signed_tokens\",\"type\":{\"items\":{\"name\":\"signed_token\",\"type\":\"string\"},\"type\":\"array\"}},{\"name\":\"issuer_public_key\",\"type\":\"string\"},{\"name\":\"proof\",\"type\":\"string\"},{\"default\":null,\"name\":\"valid_from\",\"type\":[\"null\",\"string\"]},{\"default\":null,\"name\":\"valid_to\",\"type\":[\"null\",\"string\"]},{\"name\":\"status\",\"type\":{\"name\":\"SigningResultV2Status\",\"symbols\":[\"ok\",\"invalid_issuer\",\"error\"],\"type\":\"enum\"}},{\"doc\":\"contains METADATA\",\"name\":\"associated_data\",\"type\":\"bytes\"}],\"name\":\"SigningResultV2\",\"namespace\":\"brave.cbp\",\"type\":\"record\"},\"type\":\"array\"}}],\"name\":\"brave.cbp.SigningResultV2Set\",\"type\":\"record\"}"
+	return "{\"doc\":\"Top level request containing the data to be processed, as well as any top level metadata for this message.\",\"fields\":[{\"name\":\"request_id\",\"type\":\"string\"},{\"name\":\"data\",\"type\":{\"items\":{\"fields\":[{\"name\":\"signed_tokens\",\"type\":{\"items\":{\"name\":\"signed_token\",\"type\":\"string\"},\"type\":\"array\"}},{\"name\":\"issuer_public_key\",\"type\":\"string\"},{\"name\":\"proof\",\"type\":\"string\"},{\"name\":\"status\",\"type\":{\"name\":\"SigningResultV2Status\",\"symbols\":[\"ok\",\"invalid_issuer\",\"error\"],\"type\":\"enum\"}},{\"doc\":\"contains METADATA\",\"name\":\"associated_data\",\"type\":\"bytes\"},{\"default\":null,\"name\":\"valid_to\",\"type\":[\"null\",\"string\"]},{\"default\":null,\"name\":\"valid_from\",\"type\":[\"null\",\"string\"]},{\"default\":[],\"name\":\"blinded_tokens\",\"type\":{\"items\":{\"type\":\"string\"},\"type\":\"array\"}}],\"name\":\"SigningResultV2\",\"namespace\":\"brave.cbp\",\"type\":\"record\"},\"type\":\"array\"}}],\"name\":\"brave.cbp.SigningResultV2Set\",\"type\":\"record\"}"
 }
 
 func (r SigningResultV2Set) SchemaName() string {

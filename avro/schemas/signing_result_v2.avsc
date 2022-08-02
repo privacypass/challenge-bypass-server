@@ -26,14 +26,19 @@
                         },
                         {"name": "public_key", "type": "string"},
                         {"name": "proof", "type": "string"},
-                        {"name": "valid_from", "type": ["null", "string"], "default": null},
-                        {"name": "valid_to", "type": ["null", "string"], "default": null},
                         {"name": "status", "type": {
                             "name": "SigningResultV2Status",
                             "type": "enum",
                             "symbols": ["ok", "invalid_issuer", "error"]
                         }},
-                        {"name": "associated_data", "type": "bytes", "doc": "contains METADATA"}
+                        {"name": "associated_data", "type": "bytes", "doc": "contains METADATA"},
+                        {"name": "valid_to", "type": ["null", "string"], "default": null},
+                        {"name": "valid_from", "type": ["null", "string"], "default": null},
+                        {
+                            "name": "blinded_tokens",
+                            "type": {"type" : "array", "items": {"type": "string"}},
+                            "default": []
+                        }
                     ]
                 }
             }

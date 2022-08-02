@@ -28,23 +28,29 @@ type SigningResultV2 struct {
 
 	Proof string `json:"proof"`
 
-	Valid_from *UnionNullString `json:"valid_from"`
-
-	Valid_to *UnionNullString `json:"valid_to"`
-
 	Status SigningResultV2Status `json:"status"`
 	// contains METADATA
 	Associated_data Bytes `json:"associated_data"`
+
+	Valid_to *UnionNullString `json:"valid_to"`
+
+	Valid_from *UnionNullString `json:"valid_from"`
+
+	Blinded_tokens []string `json:"blinded_tokens"`
 }
 
-const SigningResultV2AvroCRC64Fingerprint = "\xcak\xe3\xff\xe5\x0f\x1d\xc4"
+const SigningResultV2AvroCRC64Fingerprint = "\x17\xc3\x05\xd8\x18\raq"
 
 func NewSigningResultV2() SigningResultV2 {
 	r := SigningResultV2{}
 	r.Signed_tokens = make([]string, 0)
 
-	r.Valid_from = nil
 	r.Valid_to = nil
+	r.Valid_from = nil
+	r.Blinded_tokens = make([]string, 0)
+
+	r.Blinded_tokens = make([]string, 0)
+
 	return r
 }
 
@@ -85,7 +91,11 @@ func writeSigningResultV2(r SigningResultV2, w io.Writer) error {
 	if err != nil {
 		return err
 	}
-	err = writeUnionNullString(r.Valid_from, w)
+	err = writeSigningResultV2Status(r.Status, w)
+	if err != nil {
+		return err
+	}
+	err = vm.WriteBytes(r.Associated_data, w)
 	if err != nil {
 		return err
 	}
@@ -93,11 +103,11 @@ func writeSigningResultV2(r SigningResultV2, w io.Writer) error {
 	if err != nil {
 		return err
 	}
-	err = writeSigningResultV2Status(r.Status, w)
+	err = writeUnionNullString(r.Valid_from, w)
 	if err != nil {
 		return err
 	}
-	err = vm.WriteBytes(r.Associated_data, w)
+	err = writeArrayString(r.Blinded_tokens, w)
 	if err != nil {
 		return err
 	}
@@ -109,7 +119,7 @@ func (r SigningResultV2) Serialize(w io.Writer) error {
 }
 
 func (r SigningResultV2) Schema() string {
-	return "{\"fields\":[{\"name\":\"signed_tokens\",\"type\":{\"items\":{\"name\":\"signed_token\",\"type\":\"string\"},\"type\":\"array\"}},{\"name\":\"issuer_public_key\",\"type\":\"string\"},{\"name\":\"proof\",\"type\":\"string\"},{\"default\":null,\"name\":\"valid_from\",\"type\":[\"null\",\"string\"]},{\"default\":null,\"name\":\"valid_to\",\"type\":[\"null\",\"string\"]},{\"name\":\"status\",\"type\":{\"name\":\"SigningResultV2Status\",\"symbols\":[\"ok\",\"invalid_issuer\",\"error\"],\"type\":\"enum\"}},{\"doc\":\"contains METADATA\",\"name\":\"associated_data\",\"type\":\"bytes\"}],\"name\":\"brave.cbp.SigningResultV2\",\"type\":\"record\"}"
+	return "{\"fields\":[{\"name\":\"signed_tokens\",\"type\":{\"items\":{\"name\":\"signed_token\",\"type\":\"string\"},\"type\":\"array\"}},{\"name\":\"issuer_public_key\",\"type\":\"string\"},{\"name\":\"proof\",\"type\":\"string\"},{\"name\":\"status\",\"type\":{\"name\":\"SigningResultV2Status\",\"symbols\":[\"ok\",\"invalid_issuer\",\"error\"],\"type\":\"enum\"}},{\"doc\":\"contains METADATA\",\"name\":\"associated_data\",\"type\":\"bytes\"},{\"default\":null,\"name\":\"valid_to\",\"type\":[\"null\",\"string\"]},{\"default\":null,\"name\":\"valid_from\",\"type\":[\"null\",\"string\"]},{\"default\":[],\"name\":\"blinded_tokens\",\"type\":{\"items\":{\"type\":\"string\"},\"type\":\"array\"}}],\"name\":\"brave.cbp.SigningResultV2\",\"type\":\"record\"}"
 }
 
 func (r SigningResultV2) SchemaName() string {
@@ -145,20 +155,27 @@ func (r *SigningResultV2) Get(i int) types.Field {
 		return w
 
 	case 3:
-		r.Valid_from = NewUnionNullString()
-
-		return r.Valid_from
-	case 4:
-		r.Valid_to = NewUnionNullString()
-
-		return r.Valid_to
-	case 5:
 		w := SigningResultV2StatusWrapper{Target: &r.Status}
 
 		return w
 
-	case 6:
+	case 4:
 		w := BytesWrapper{Target: &r.Associated_data}
+
+		return w
+
+	case 5:
+		r.Valid_to = NewUnionNullString()
+
+		return r.Valid_to
+	case 6:
+		r.Valid_from = NewUnionNullString()
+
+		return r.Valid_from
+	case 7:
+		r.Blinded_tokens = make([]string, 0)
+
+		w := ArrayStringWrapper{Target: &r.Blinded_tokens}
 
 		return w
 
@@ -168,11 +185,15 @@ func (r *SigningResultV2) Get(i int) types.Field {
 
 func (r *SigningResultV2) SetDefault(i int) {
 	switch i {
-	case 3:
+	case 5:
+		r.Valid_to = nil
+		return
+	case 6:
 		r.Valid_from = nil
 		return
-	case 4:
-		r.Valid_to = nil
+	case 7:
+		r.Blinded_tokens = make([]string, 0)
+
 		return
 	}
 	panic("Unknown field index")
@@ -180,11 +201,11 @@ func (r *SigningResultV2) SetDefault(i int) {
 
 func (r *SigningResultV2) NullField(i int) {
 	switch i {
-	case 3:
-		r.Valid_from = nil
-		return
-	case 4:
+	case 5:
 		r.Valid_to = nil
+		return
+	case 6:
+		r.Valid_from = nil
 		return
 	}
 	panic("Not a nullable field index")
@@ -214,7 +235,11 @@ func (r SigningResultV2) MarshalJSON() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	output["valid_from"], err = json.Marshal(r.Valid_from)
+	output["status"], err = json.Marshal(r.Status)
+	if err != nil {
+		return nil, err
+	}
+	output["associated_data"], err = json.Marshal(r.Associated_data)
 	if err != nil {
 		return nil, err
 	}
@@ -222,11 +247,11 @@ func (r SigningResultV2) MarshalJSON() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	output["status"], err = json.Marshal(r.Status)
+	output["valid_from"], err = json.Marshal(r.Valid_from)
 	if err != nil {
 		return nil, err
 	}
-	output["associated_data"], err = json.Marshal(r.Associated_data)
+	output["blinded_tokens"], err = json.Marshal(r.Blinded_tokens)
 	if err != nil {
 		return nil, err
 	}
@@ -283,38 +308,6 @@ func (r *SigningResultV2) UnmarshalJSON(data []byte) error {
 		return fmt.Errorf("no value specified for proof")
 	}
 	val = func() json.RawMessage {
-		if v, ok := fields["valid_from"]; ok {
-			return v
-		}
-		return nil
-	}()
-
-	if val != nil {
-		if err := json.Unmarshal([]byte(val), &r.Valid_from); err != nil {
-			return err
-		}
-	} else {
-		r.Valid_from = NewUnionNullString()
-
-		r.Valid_from = nil
-	}
-	val = func() json.RawMessage {
-		if v, ok := fields["valid_to"]; ok {
-			return v
-		}
-		return nil
-	}()
-
-	if val != nil {
-		if err := json.Unmarshal([]byte(val), &r.Valid_to); err != nil {
-			return err
-		}
-	} else {
-		r.Valid_to = NewUnionNullString()
-
-		r.Valid_to = nil
-	}
-	val = func() json.RawMessage {
 		if v, ok := fields["status"]; ok {
 			return v
 		}
@@ -341,6 +334,55 @@ func (r *SigningResultV2) UnmarshalJSON(data []byte) error {
 		}
 	} else {
 		return fmt.Errorf("no value specified for associated_data")
+	}
+	val = func() json.RawMessage {
+		if v, ok := fields["valid_to"]; ok {
+			return v
+		}
+		return nil
+	}()
+
+	if val != nil {
+		if err := json.Unmarshal([]byte(val), &r.Valid_to); err != nil {
+			return err
+		}
+	} else {
+		r.Valid_to = NewUnionNullString()
+
+		r.Valid_to = nil
+	}
+	val = func() json.RawMessage {
+		if v, ok := fields["valid_from"]; ok {
+			return v
+		}
+		return nil
+	}()
+
+	if val != nil {
+		if err := json.Unmarshal([]byte(val), &r.Valid_from); err != nil {
+			return err
+		}
+	} else {
+		r.Valid_from = NewUnionNullString()
+
+		r.Valid_from = nil
+	}
+	val = func() json.RawMessage {
+		if v, ok := fields["blinded_tokens"]; ok {
+			return v
+		}
+		return nil
+	}()
+
+	if val != nil {
+		if err := json.Unmarshal([]byte(val), &r.Blinded_tokens); err != nil {
+			return err
+		}
+	} else {
+		r.Blinded_tokens = make([]string, 0)
+
+		r.Blinded_tokens = make([]string, 0)
+
 	}
 	return nil
 }

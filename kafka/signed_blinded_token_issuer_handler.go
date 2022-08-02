@@ -120,16 +120,20 @@ OUTER:
 			// sign tokens with all the keys in buffer+overlap
 			for i := issuer.Buffer + issuer.Overlap; i > 0; i-- {
 				var (
-					signingKey *crypto.SigningKey
-					validFrom  string
-					validTo    string
+					blindedTokensSlice []*crypto.BlindedToken
+					signingKey         *crypto.SigningKey
+					validFrom          string
+					validTo            string
 				)
+
 				signingKey = issuer.Keys[len(issuer.Keys)-i].SigningKey
 				validFrom = issuer.Keys[len(issuer.Keys)-i].StartAt.Format(time.RFC3339)
 				validTo = issuer.Keys[len(issuer.Keys)-i].EndAt.Format(time.RFC3339)
-				// @TODO: If one token fails they will all fail. Assess this behavior
-				signedTokens, dleqProof, err := btd.ApproveTokens(blindedTokens[(i-numT):i], signingKey)
+
+				blindedTokensSlice = blindedTokens[(i - numT):i]
+				signedTokens, DLEQProof, err := btd.ApproveTokens(blindedTokensSlice, signingKey)
 				if err != nil {
+					// @TODO: If one token fails they will all fail. Assess this behavior
 					logger.Error().Err(fmt.Errorf("error could not approve new tokens: %w", err)).
 						Msg("signed blinded token issuer handler")
 					blindedTokenResults = append(blindedTokenResults, avroSchema.SigningResultV2{
@@ -141,19 +145,29 @@ OUTER:
 					break OUTER
 				}
 
-				marshaledDLEQProof, err := dleqProof.MarshalText()
+				marshaledDLEQProof, err := DLEQProof.MarshalText()
 				if err != nil {
 					return fmt.Errorf("request %s: could not marshal dleq proof: %w", blindedTokenRequestSet.Request_id, err)
 				}
 
-				var marshaledTokens []string
+				var marshalledBlindedTokens []string
+				for _, token := range blindedTokensSlice {
+					marshaledToken, err := token.MarshalText()
+					if err != nil {
+						return fmt.Errorf("request %s: could not marshal blinded token slice to bytes: %w",
+							blindedTokenRequestSet.Request_id, err)
+					}
+					marshalledBlindedTokens = append(marshalledBlindedTokens, string(marshaledToken[:]))
+				}
+
+				var marshaledSignedTokens []string
 				for _, token := range signedTokens {
 					marshaledToken, err := token.MarshalText()
 					if err != nil {
 						return fmt.Errorf("request %s: could not marshal new tokens to bytes: %w",
 							blindedTokenRequestSet.Request_id, err)
 					}
-					marshaledTokens = append(marshaledTokens, string(marshaledToken[:]))
+					marshaledSignedTokens = append(marshaledSignedTokens, string(marshaledToken[:]))
 				}
 
 				publicKey := signingKey.PublicKey()
@@ -164,7 +178,8 @@ OUTER:
 				}
 
 				blindedTokenResults = append(blindedTokenResults, avroSchema.SigningResultV2{
-					Signed_tokens:     marshaledTokens,
+					Blinded_tokens:    marshalledBlindedTokens,
+					Signed_tokens:     marshaledSignedTokens,
 					Proof:             string(marshaledDLEQProof),
 					Issuer_public_key: string(marshaledPublicKey),
 					Valid_from:        &avroSchema.UnionNullString{String: validFrom, UnionType: avroSchema.UnionNullStringTypeEnumString},
@@ -181,7 +196,7 @@ OUTER:
 			}
 
 			// @TODO: If one token fails they will all fail. Assess this behavior
-			signedTokens, dleqProof, err := btd.ApproveTokens(blindedTokens, signingKey)
+			signedTokens, DLEQProof, err := btd.ApproveTokens(blindedTokens, signingKey)
 			if err != nil {
 				logger.Error().
 					Err(fmt.Errorf("error could not approve new tokens: %w", err)).
@@ -195,19 +210,29 @@ OUTER:
 				break OUTER
 			}
 
-			marshaledDLEQProof, err := dleqProof.MarshalText()
+			marshaledDLEQProof, err := DLEQProof.MarshalText()
 			if err != nil {
 				return fmt.Errorf("request %s: could not marshal dleq proof: %w",
 					blindedTokenRequestSet.Request_id, err)
 			}
 
-			var marshaledTokens []string
+			var marshalledBlindedTokens []string
+			for _, token := range blindedTokens {
+				marshaledToken, err := token.MarshalText()
+				if err != nil {
+					return fmt.Errorf("request %s: could not marshal blinded token slice to bytes: %w",
+						blindedTokenRequestSet.Request_id, err)
+				}
+				marshalledBlindedTokens = append(marshalledBlindedTokens, string(marshaledToken[:]))
+			}
+
+			var marshaledSignedTokens []string
 			for _, token := range signedTokens {
 				marshaledToken, err := token.MarshalText()
 				if err != nil {
 					return fmt.Errorf("error could not marshal new tokens to bytes: %w", err)
 				}
-				marshaledTokens = append(marshaledTokens, string(marshaledToken[:]))
+				marshaledSignedTokens = append(marshaledSignedTokens, string(marshaledToken[:]))
 			}
 
 			publicKey := signingKey.PublicKey()
@@ -217,7 +242,8 @@ OUTER:
 			}
 
 			blindedTokenResults = append(blindedTokenResults, avroSchema.SigningResultV2{
-				Signed_tokens:     marshaledTokens,
+				Blinded_tokens:    marshalledBlindedTokens,
+				Signed_tokens:     marshaledSignedTokens,
 				Proof:             string(marshaledDLEQProof),
 				Issuer_public_key: string(marshaledPublicKey),
 				Status:            issuerOk,
