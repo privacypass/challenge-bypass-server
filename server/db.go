@@ -53,7 +53,7 @@ type issuer struct {
 	Buffer               int         `json:"buffer" db:"buffer"`
 	DaysOut              int         `json:"days_out" db:"days_out"`
 	Overlap              int         `json:"overlap" db:"overlap"`
-	Duration             string      `json:"duration" db:"duration"`
+	Duration             *string     `json:"duration" db:"duration"`
 	RedemptionRepository string      `json:"-" db:"redemption_repository"`
 }
 
@@ -95,7 +95,7 @@ type Issuer struct {
 	ValidFrom    *time.Time   `json:"valid_from"`
 	Buffer       int          `json:"buffer"`
 	Overlap      int          `json:"overlap"`
-	Duration     string       `json:"duration"`
+	Duration     *string      `json:"duration"`
 	Keys         []IssuerKeys `json:"keys"`
 }
 
@@ -732,9 +732,11 @@ func txPopulateIssuerKeys(logger *logrus.Logger, tx *sqlx.Tx, issuer Issuer) err
 
 	if issuer.Version == 3 {
 		// get the duration from the issuer
-		duration, err = timeutils.ParseDuration(issuer.Duration)
-		if err != nil {
-			return fmt.Errorf("failed to parse issuer duration: %w", err)
+		if issuer.Duration != nil {
+			duration, err = timeutils.ParseDuration(*issuer.Duration)
+			if err != nil {
+				return fmt.Errorf("failed to parse issuer duration: %w", err)
+			}
 		}
 	}
 
@@ -762,7 +764,7 @@ func txPopulateIssuerKeys(logger *logrus.Logger, tx *sqlx.Tx, issuer Issuer) err
 
 	valueFmtStr := ""
 
-	var keys = []issuerKeys{}
+	var keys []issuerKeys
 	var position = 0
 	// for i in buffer, create signing keys for each
 	for ; i < issuer.Buffer; i++ {

@@ -223,7 +223,7 @@ func (c *Server) issuerV3CreateHandler(w http.ResponseWriter, r *http.Request) *
 		Buffer:       req.Buffer,
 		Overlap:      req.Overlap,
 		ValidFrom:    req.ValidFrom,
-		Duration:     req.Duration,
+		Duration:     &req.Duration,
 	}); err != nil {
 
 		var pqErr *pq.Error
