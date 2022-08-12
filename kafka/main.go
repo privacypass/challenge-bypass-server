@@ -36,6 +36,7 @@ func StartConsumers(providedServer *server.Server, logger *zerolog.Logger) error
 	adsRequestSignV1Topic := os.Getenv("SIGN_CONSUMER_TOPIC")
 	adsResultSignV1Topic := os.Getenv("SIGN_PRODUCER_TOPIC")
 	adsConsumerGroupV1 := os.Getenv("CONSUMER_GROUP")
+
 	if len(brokers) < 1 {
 		brokers = strings.Split(os.Getenv("KAFKA_BROKERS"), ",")
 	}
