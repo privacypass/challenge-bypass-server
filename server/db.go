@@ -61,7 +61,7 @@ type issuer struct {
 type issuerKeys struct {
 	ID         *uuid.UUID `db:"key_id"`
 	SigningKey []byte     `db:"signing_key"`
-	PublicKey  string     `db:"public_key"`
+	PublicKey  *string    `db:"public_key"`
 	Cohort     int16      `db:"cohort"`
 	IssuerID   *uuid.UUID `db:"issuer_id"`
 	CreatedAt  *time.Time `db:"created_at"`
@@ -73,7 +73,7 @@ type issuerKeys struct {
 type IssuerKeys struct {
 	ID         *uuid.UUID         `json:"id"`
 	SigningKey *crypto.SigningKey `json:"-"`
-	PublicKey  string             `json:"public_key" db:"public_key"`
+	PublicKey  *string            `json:"public_key" db:"public_key"`
 	Cohort     int16              `json:"cohort" db:"cohort"`
 	IssuerID   *uuid.UUID         `json:"issuer_id" db:"issuer_id"`
 	CreatedAt  *time.Time         `json:"created_at" db:"created_at"`
@@ -804,7 +804,7 @@ func txPopulateIssuerKeys(logger *logrus.Logger, tx *sqlx.Tx, issuer Issuer) err
 
 		var k = issuerKeys{
 			SigningKey: signingKeyTxt,
-			PublicKey:  string(pubKeyTxt),
+			PublicKey:  ptr.FromString(string(pubKeyTxt)),
 			Cohort:     issuer.IssuerCohort,
 			IssuerID:   issuer.ID,
 			StartAt:    &tmpStart,
