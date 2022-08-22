@@ -12,11 +12,10 @@ RUN pip install awscli --upgrade
 RUN curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s -- -b $(go env GOPATH)/bin latest
 RUN mkdir /src
 WORKDIR /src
-COPY go.mod .
-COPY go.sum .
-RUN go mod download
-COPY --from=rust_builder /src/target/x86_64-unknown-linux-musl/release/libchallenge_bypass_ristretto.a /usr/lib/libchallenge_bypass_ristretto_ffi.a
 COPY . .
+RUN go mod download
+COPY --from=rust_builder /src/target/x86_64-unknown-linux-musl/release/libchallenge_bypass_ristretto.a /usr/lib/libchallenge_bypass_ristretto.a
+COPY --from=rust_builder /src/target/x86_64-unknown-linux-musl/release/libchallenge_bypass_ristretto.a /usr/lib/libchallenge_bypass_ristretto_ffi.a
 RUN go build --ldflags '-extldflags "-static"' -o challenge-bypass-server main.go
 CMD ["/src/challenge-bypass-server"]
 
@@ -25,6 +24,7 @@ ARG DEBIAN_FRONTEND=noninteractive
 RUN apt update && apt install -y ca-certificates awscli && rm -rf /var/cache/apk/*
 RUN update-ca-certificates
 COPY --from=go_builder /src/challenge-bypass-server /bin/
+COPY --from=rust_builder /src/target/x86_64-unknown-linux-musl/release/libchallenge_bypass_ristretto.a /usr/lib/libchallenge_bypass_ristretto.a
 COPY migrations /src/migrations
 EXPOSE 2416
 ENV DATABASE_URL=
