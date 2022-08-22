@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go/service/dynamodb"
-	"github.com/brave-intl/bat-go/middleware"
+	"github.com/brave-intl/bat-go/libs/middleware"
 	"github.com/go-chi/chi"
 	chiware "github.com/go-chi/chi/middleware"
 	"github.com/go-chi/httplog"

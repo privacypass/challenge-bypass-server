@@ -4,14 +4,15 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"github.com/brave-intl/challenge-bypass-server/utils/ptr"
 	"os"
 	"strconv"
 	"time"
 
-	timeutils "github.com/brave-intl/bat-go/utils/time"
-	crypto "github.com/brave-intl/challenge-bypass-ristretto-ffi"
 	"github.com/brave-intl/challenge-bypass-server/utils/metrics"
+	"github.com/brave-intl/challenge-bypass-server/utils/ptr"
+
+	timeutils "github.com/brave-intl/bat-go/libs/time"
+	crypto "github.com/brave-intl/challenge-bypass-ristretto-ffi"
 	migrate "github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file" // Why?

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	batgo_kafka "github.com/brave-intl/bat-go/utils/kafka"
+	batgo_kafka "github.com/brave-intl/bat-go/libs/kafka"
 	"github.com/brave-intl/challenge-bypass-server/server"
 	uuid "github.com/google/uuid"
 	"github.com/rs/zerolog"
