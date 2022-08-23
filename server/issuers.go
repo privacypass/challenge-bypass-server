@@ -7,9 +7,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/brave-intl/bat-go/middleware"
-	"github.com/brave-intl/bat-go/utils/closers"
-	"github.com/brave-intl/bat-go/utils/handlers"
+	"github.com/brave-intl/bat-go/libs/closers"
+	"github.com/brave-intl/bat-go/libs/handlers"
+	"github.com/brave-intl/bat-go/libs/middleware"
 	crypto "github.com/brave-intl/challenge-bypass-ristretto-ffi"
 	"github.com/go-chi/chi"
 	"github.com/lib/pq"
@@ -95,7 +95,7 @@ func (c *Server) getIssuers(issuerType string) (*[]Issuer, *handlers.AppError) {
 }
 
 func (c *Server) issuerGetHandlerV1(w http.ResponseWriter, r *http.Request) *handlers.AppError {
-	defer closers.Panic(r.Body)
+	defer closers.Panic(r.Context(), r.Body)
 
 	if issuerType := chi.URLParam(r, "type"); issuerType != "" {
 		issuer, appErr := c.GetLatestIssuer(issuerType, v1Cohort)
@@ -123,7 +123,7 @@ func (c *Server) issuerGetHandlerV1(w http.ResponseWriter, r *http.Request) *han
 }
 
 func (c *Server) issuerHandlerV2(w http.ResponseWriter, r *http.Request) *handlers.AppError {
-	defer closers.Panic(r.Body)
+	defer closers.Panic(r.Context(), r.Body)
 
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxRequestSize))
 	var req issuerFetchRequestV2
@@ -159,7 +159,7 @@ func (c *Server) issuerHandlerV2(w http.ResponseWriter, r *http.Request) *handle
 }
 
 func (c *Server) issuerGetAllHandler(w http.ResponseWriter, r *http.Request) *handlers.AppError {
-	defer closers.Panic(r.Body)
+	defer closers.Panic(r.Context(), r.Body)
 
 	issuers, appErr := c.FetchAllIssuers()
 	if appErr != nil {
