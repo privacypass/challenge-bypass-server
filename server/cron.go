@@ -27,5 +27,14 @@ func (c *Server) SetupCronTasks() {
 	}); err != nil {
 		panic(err)
 	}
+	if _, err := cron.AddFunc(cadence, func() {
+		rows, err := c.deleteIssuerKeys("P1M")
+		if err != nil {
+			panic(err)
+		}
+		c.Logger.Infof("cron: delete issuers keys removed %d", rows)
+	}); err != nil {
+		panic(err)
+	}
 	cron.Start()
 }

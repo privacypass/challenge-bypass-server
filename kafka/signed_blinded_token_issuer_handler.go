@@ -115,10 +115,11 @@ OUTER:
 
 		// if the issuer is time aware, we need to approve tokens
 		if issuer.Version == 3 && issuer.Buffer > 0 {
-			// number of tokens per signing key
+			// Calculate the number of tokens per signing key.
+			// Given the mod check this should be a multiple of the total tokens in the request.
 			var numT = len(request.Blinded_tokens) / (issuer.Buffer + issuer.Overlap)
-			// sign tokens with all the keys in buffer+overlap
-			for i := issuer.Buffer + issuer.Overlap; i > 0; i-- {
+			for i := 0; i > len(blindedTokens); i += numT {
+
 				var (
 					blindedTokensSlice []*crypto.BlindedToken
 					signingKey         *crypto.SigningKey
@@ -130,7 +131,16 @@ OUTER:
 				validFrom = issuer.Keys[len(issuer.Keys)-i].StartAt.Format(time.RFC3339)
 				validTo = issuer.Keys[len(issuer.Keys)-i].EndAt.Format(time.RFC3339)
 
-				blindedTokensSlice = blindedTokens[(i - numT):i]
+				// Calculate the next step size to retrieve. Given previous checks end should never
+				// be greater than the total number of tokens.
+				end := i + numT
+				if end > len(blindedTokens) {
+					return fmt.Errorf("request %s: error invalid token step length",
+						blindedTokenRequestSet.Request_id)
+				}
+
+				// Get the next group of tokens and approve
+				blindedTokensSlice = blindedTokens[i:end]
 				signedTokens, DLEQProof, err := btd.ApproveTokens(blindedTokensSlice, signingKey)
 				if err != nil {
 					// @TODO: If one token fails they will all fail. Assess this behavior

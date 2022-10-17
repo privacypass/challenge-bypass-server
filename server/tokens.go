@@ -1,6 +1,7 @@
 package server
 
 import (
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -169,13 +170,40 @@ func (c *Server) blindedTokenIssuerHandler(w http.ResponseWriter, r *http.Reques
 func (c *Server) blindedTokenRedeemHandlerV3(w http.ResponseWriter, r *http.Request) *handlers.AppError {
 	var response blindedTokenRedeemResponse
 	if issuerType := chi.URLParam(r, "type"); issuerType != "" {
-		issuers, appErr := c.getIssuers(issuerType)
-		if appErr != nil {
-			return appErr
+
+		issuer, err := c.fetchIssuerByType(r.Context(), issuerType)
+		if err != nil {
+			switch {
+			case errors.Is(err, sql.ErrNoRows):
+				return &handlers.AppError{
+					Message: "Issuer not found",
+					Code:    404,
+				}
+			default:
+				c.Logger.WithError(err)
+				return &handlers.AppError{
+					Cause:   errors.New("internal server error"),
+					Message: "Internal server error could not retrieve issuer",
+					Code:    500,
+				}
+			}
+		}
+
+		if issuer.Version != 3 {
+			return &handlers.AppError{
+				Message: "Issuer must be version 3",
+				Code:    http.StatusBadRequest,
+			}
+		}
+
+		if issuer.ExpiresAt.IsZero() && issuer.ExpiresAt.Before(time.Now()) {
+			return &handlers.AppError{
+				Message: "Issuer has expired",
+				Code:    http.StatusBadRequest,
+			}
 		}
 
 		var request blindedTokenRedeemRequest
-
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxRequestSize)).Decode(&request); err != nil {
 			c.Logger.Debug("Could not parse the request body")
 			return handlers.WrapError(err, "Could not parse the request body", 400)
@@ -189,63 +217,36 @@ func (c *Server) blindedTokenRedeemHandlerV3(w http.ResponseWriter, r *http.Requ
 			}
 		}
 
-		var verified = false
-		var verifiedIssuer = &Issuer{}
-		var verifiedCohort = int16(0)
-		for _, issuer := range *issuers {
-			if !issuer.ExpiresAt.IsZero() && issuer.ExpiresAt.Before(time.Now()) {
-				continue
-			}
-
-			// validate issuer is a v3 issuer
-			if issuer.Version != 3 {
+		var signingKey *crypto.SigningKey
+		for _, k := range issuer.Keys {
+			if k.StartAt == nil || k.EndAt == nil {
 				return &handlers.AppError{
-					Message: "Invalid Issuer",
+					Message: "Issuer has invalid keys for v3",
 					Code:    http.StatusBadRequest,
 				}
 			}
 
-			// iterate through the keys until we have one that is valid
-			var signingKey *crypto.SigningKey
-			for _, k := range issuer.Keys {
-				if k.StartAt == nil || k.EndAt == nil {
-					return &handlers.AppError{
-						Message: "Issuer has invalid keys for v3",
-						Code:    http.StatusBadRequest,
-					}
-				}
-
-				if k.StartAt.Before(time.Now()) && k.EndAt.After(time.Now()) {
-					signingKey = k.SigningKey
-					break
-				}
-			}
-			if signingKey == nil {
-				return &handlers.AppError{
-					Message: "Issuer has no key that corresponds to start < now < end",
-					Code:    http.StatusBadRequest,
-				}
-			}
-
-			if err := btd.VerifyTokenRedemption(request.TokenPreimage, request.Signature, request.Payload, []*crypto.SigningKey{signingKey}); err != nil {
-				verified = false
-			} else {
-				verified = true
-				verifiedIssuer = &issuer
-				verifiedCohort = issuer.IssuerCohort
+			if k.StartAt.Before(time.Now()) && k.EndAt.After(time.Now()) {
+				signingKey = k.SigningKey
 				break
 			}
 		}
+		if signingKey == nil {
+			return &handlers.AppError{
+				Message: "Issuer has no key that corresponds to start < now < end",
+				Code:    http.StatusBadRequest,
+			}
+		}
 
-		if !verified {
-			c.Logger.Debug("Could not verify that the token redemption is valid")
+		if err := btd.VerifyTokenRedemption(request.TokenPreimage, request.Signature, request.Payload,
+			[]*crypto.SigningKey{signingKey}); err != nil {
 			return &handlers.AppError{
 				Message: "Could not verify that token redemption is valid",
 				Code:    http.StatusBadRequest,
 			}
 		}
 
-		if err := c.RedeemToken(verifiedIssuer, request.TokenPreimage, request.Payload); err != nil {
+		if err := c.RedeemToken(issuer, request.TokenPreimage, request.Payload); err != nil {
 			if errors.Is(err, errDuplicateRedemption) {
 				return &handlers.AppError{
 					Message: err.Error(),
@@ -259,8 +260,9 @@ func (c *Server) blindedTokenRedeemHandlerV3(w http.ResponseWriter, r *http.Requ
 			}
 
 		}
-		response = blindedTokenRedeemResponse{verifiedCohort}
+		response = blindedTokenRedeemResponse{issuer.IssuerCohort}
 	}
+
 	return handlers.RenderContent(r.Context(), response, w, http.StatusOK)
 }
 
@@ -517,7 +519,6 @@ func (c *Server) tokenRouterV2() chi.Router {
 	return r
 }
 
-// New end point to generated marked tokens
 func (c *Server) tokenRouterV3() chi.Router {
 	r := chi.NewRouter()
 	if os.Getenv("ENV") == "production" {
