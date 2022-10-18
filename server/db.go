@@ -442,7 +442,7 @@ func (c *Server) fetchIssuerByType(ctx context.Context, issuerType string) (*Iss
 	}
 
 	if c.caches != nil {
-		c.caches["issuers"].SetDefault(issuerType, issuerV3)
+		c.caches["issuer"].SetDefault(issuerType, issuerV3)
 	}
 
 	return convertedIssuer, nil
