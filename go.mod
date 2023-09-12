@@ -3,18 +3,20 @@ module github.com/privacypass/challenge-bypass-server
 go 1.21.1
 
 require (
-	github.com/prometheus/client_golang v0.8.1-0.20170401103446-08fd2e12372a
+	github.com/prometheus/client_golang v1.11.1
 	github.com/tylertreat/BoomFilters v0.0.0-20170206154715-a4a2879c8d3e
-	golang.org/x/crypto v0.0.0-20170317163734-459e26527287
+	golang.org/x/crypto v0.0.0-20200622213623-75b288015ac9
 )
 
 require (
-	github.com/beorn7/perks v0.0.0-20160804104726-4c0e84591b9a // indirect
+	github.com/beorn7/perks v1.0.1 // indirect
+	github.com/cespare/xxhash/v2 v2.1.1 // indirect
 	github.com/d4l3k/messagediff v1.2.1 // indirect
-	github.com/golang/protobuf v0.0.0-20170331031902-2bba0603135d // indirect
+	github.com/golang/protobuf v1.4.3 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.1 // indirect
-	github.com/prometheus/client_model v0.0.0-20170216185247-6f3806018612 // indirect
-	github.com/prometheus/common v0.0.0-20170220103846-49fee292b27b // indirect
-	github.com/prometheus/procfs v0.0.0-20170216223256-a1dba9ce8bae // indirect
-	golang.org/x/sync v0.3.0 // indirect
+	github.com/prometheus/client_model v0.2.0 // indirect
+	github.com/prometheus/common v0.26.0 // indirect
+	github.com/prometheus/procfs v0.6.0 // indirect
+	golang.org/x/sys v0.0.0-20210603081109-ebe580a85c40 // indirect
+	google.golang.org/protobuf v1.26.0-rc.1 // indirect
 )
