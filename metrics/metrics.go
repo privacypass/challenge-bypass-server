@@ -8,6 +8,7 @@ import (
 	"runtime"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 var (
@@ -81,22 +82,19 @@ var (
 )
 
 func RegisterAndListen(listenAddr string, errLog *log.Logger) {
-	registry := []prometheus.Collector{
+	collector := []prometheus.Collector{
 		CounterConnections, CounterConnErrors, CounterRedeemTotal,
 		CounterRedeemSuccess, CounterRedeemError, CounterRedeemErrorFormat,
 		CounterRedeemErrorVerify, CounterIssueTotal, CounterIssueSuccess,
 		CounterIssueError, CounterIssueErrorFormat, CounterJsonError,
 		CounterDoubleSpend, CounterUnknownRequestType, BuildInfo,
 	}
-	for _, collector := range registry {
-		err := prometheus.Register(collector)
-		if err != nil {
-			errLog.Printf("failed to register collector: %v", err)
-		}
-	}
+
+	reg := prometheus.NewRegistry()
+	reg.MustRegister(collector...)
 
 	mux := http.NewServeMux()
-	mux.Handle("/metrics", prometheus.Handler())
+	mux.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{Registry: reg}))
 
 	mux.HandleFunc("/debug/pprof/", pprof.Index)
 	mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
